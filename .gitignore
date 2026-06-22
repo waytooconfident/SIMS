@@ -1,0 +1,27 @@
+# Dependencies (reinstalled with `npm install` on the other machine)
+node_modules/
+
+# Build / packaging output
+out/
+dist/
+release/
+
+# TypeScript incremental build caches
+*.tsbuildinfo
+
+# Stray/empty folder from a mistyped command
+node_moduleselectrondist/
+
+# Agent project notes (not needed to run the app)
+memory/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# Local databases (these normally live in %APPDATA%, never here — belt & suspenders)
+*.db
+*.sqlite
