@@ -10,7 +10,9 @@
 //       just fee line-items (added non-destructively via ALTER TABLE).
 //   v4: Products gains SortOrder for manual drag-reordering (ALTER TABLE).
 //   v5: Currencies table (multi-currency support; created via CREATE IF NOT EXISTS).
-export const SCHEMA_VERSION = 5
+//   v6: ProductDetails + DetailCosts tables (variants), and a DetailID column on
+//       ProductPlatformMappings (ALTER) so sales can be tracked per variant.
+export const SCHEMA_VERSION = 6
 
 // Drops the restructured tables (children first for FK safety). Settings is left
 // intact so the user's exchange rate / preferences survive a schema reset.
@@ -75,25 +77,58 @@ CREATE TABLE IF NOT EXISTS Products (
   FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID)
 );
 
+-- ─── ProductDetails (變體/SKU) ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ProductDetails (
+  DetailID      TEXT PRIMARY KEY,
+  ProductID     TEXT NOT NULL,
+  DetailName    TEXT NOT NULL,
+  ImageKey      TEXT,                       -- null = inherit the product's image
+  ImagePath     TEXT,
+  SellingPrice  REAL NOT NULL DEFAULT 0,
+  StockQuantity INTEGER NOT NULL DEFAULT 0,
+  SortOrder     INTEGER NOT NULL DEFAULT 0,
+  CreatedAt     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (ProductID) REFERENCES Products(ProductID) ON DELETE CASCADE
+);
+
+-- ─── DetailCosts ────────────────────────────────────────────────────────────
+-- A detail may have several cost line-items, each in any currency. The detail's
+-- total NT$ cost = SUM(Amount × that currency's RateToTWD).
+CREATE TABLE IF NOT EXISTS DetailCosts (
+  CostID       TEXT PRIMARY KEY,
+  DetailID     TEXT NOT NULL,
+  CostName     TEXT NOT NULL DEFAULT '',
+  Amount       REAL NOT NULL DEFAULT 0,
+  CurrencyCode TEXT NOT NULL DEFAULT 'TWD',
+  SortOrder    INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (DetailID) REFERENCES ProductDetails(DetailID) ON DELETE CASCADE
+);
+
 -- ─── ProductPlatformMappings ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ProductPlatformMappings (
   MappingID           TEXT PRIMARY KEY,
   ProductID           TEXT NOT NULL,
   PlatformID          TEXT NOT NULL,
+  DetailID            TEXT,                  -- null = product-level sale
   DateRecorded        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PlatformTitle       TEXT NOT NULL DEFAULT '-',
   PlatformDescription TEXT NOT NULL DEFAULT '-',
   SellingPrice        REAL NOT NULL DEFAULT 0,
   SalesVolume         INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (ProductID)  REFERENCES Products(ProductID)   ON DELETE CASCADE,
-  FOREIGN KEY (PlatformID) REFERENCES Platforms(PlatformID) ON DELETE CASCADE
+  FOREIGN KEY (PlatformID) REFERENCES Platforms(PlatformID) ON DELETE CASCADE,
+  FOREIGN KEY (DetailID)   REFERENCES ProductDetails(DetailID) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_category    ON Products(CategoryID);
 CREATE INDEX IF NOT EXISTS idx_mappings_productid   ON ProductPlatformMappings(ProductID);
 CREATE INDEX IF NOT EXISTS idx_mappings_platformid  ON ProductPlatformMappings(PlatformID);
+CREATE INDEX IF NOT EXISTS idx_mappings_detailid    ON ProductPlatformMappings(DetailID);
 CREATE INDEX IF NOT EXISTS idx_mappings_date        ON ProductPlatformMappings(DateRecorded);
 CREATE INDEX IF NOT EXISTS idx_platformfees_plat    ON PlatformFees(PlatformID);
+CREATE INDEX IF NOT EXISTS idx_details_productid    ON ProductDetails(ProductID);
+CREATE INDEX IF NOT EXISTS idx_detailcosts_detailid ON DetailCosts(DetailID);
 
 -- ─── Currencies ────────────────────────────────────────────────────────────
 -- Named currencies and their exchange rate to NT$. 'TWD' is the base (rate 1)
@@ -144,11 +179,27 @@ const FEE_SUM_JOIN = `
     FROM PlatformFees GROUP BY PlatformID
   ) fee ON fee.PlatformID = pl.PlatformID`
 
+// Per-detail summed NT$ cost (each cost line converted via its currency rate).
+const DETAIL_COST_JOIN = `
+  LEFT JOIN (
+    SELECT dc.DetailID, SUM(dc.Amount * COALESCE(cur.RateToTWD, 1)) AS DetailCostNTD
+    FROM DetailCosts dc
+    LEFT JOIN Currencies cur ON cur.CurrencyCode = dc.CurrencyCode
+    GROUP BY dc.DetailID
+  ) dcost ON dcost.DetailID = ppm.DetailID`
+
+// Per-unit cost in NT$: a detail-level sale uses the detail's summed cost,
+// otherwise the product's Cost_RMB converted at the runtime rate.
+const COST_NTD_EXPR = `
+  (CASE WHEN ppm.DetailID IS NULL
+        THEN p.Cost_RMB * :exchangeRate
+        ELSE COALESCE(dcost.DetailCostNTD, 0) END)`
+
 // Per-unit net-profit expression, reused so the formula lives in one place.
 //   NetProfit = SellingPrice - Cost_NTD - SellingPrice*fee% - fixedFee
 const NET_PROFIT_EXPR = `
   (ppm.SellingPrice
-   - (p.Cost_RMB * :exchangeRate)
+   - ${COST_NTD_EXPR}
    - (ppm.SellingPrice * COALESCE(fee.TotalFeePercentage, 0) / 100.0)
    - COALESCE(fee.TotalFixedFee, 0))`
 
@@ -160,6 +211,7 @@ export const MAPPINGS_WITH_CALC_SQL = `
 SELECT
   ppm.*,
   pl.PlatformName,
+  pd.DetailName,
   p.CategoryID,
   p.ImageKey,
   p.ImagePath,
@@ -169,11 +221,11 @@ SELECT
   p.CompetitorPrice,
   COALESCE(fee.TotalFeePercentage, 0)                          AS TotalFeePercentage,
   COALESCE(fee.TotalFixedFee, 0)                               AS TotalFixedFee,
-  (p.Cost_RMB * :exchangeRate)                                 AS Cost_NTD,
+  ${COST_NTD_EXPR}                                             AS Cost_NTD,
   ${NET_PROFIT_EXPR}                                           AS NetProfit,
   CASE
-    WHEN (p.Cost_RMB * :exchangeRate) > 0
-    THEN ${NET_PROFIT_EXPR} / (p.Cost_RMB * :exchangeRate) * 100.0
+    WHEN ${COST_NTD_EXPR} > 0
+    THEN ${NET_PROFIT_EXPR} / ${COST_NTD_EXPR} * 100.0
     ELSE 0
   END                                                          AS NetProfitMargin,
   (${NET_PROFIT_EXPR} * ppm.SalesVolume)                       AS TotalEarnings,
@@ -181,10 +233,13 @@ SELECT
 FROM ProductPlatformMappings ppm
 JOIN Products  p  ON ppm.ProductID  = p.ProductID
 JOIN Platforms pl ON ppm.PlatformID = pl.PlatformID
+LEFT JOIN ProductDetails pd ON pd.DetailID = ppm.DetailID
 ${FEE_SUM_JOIN}
+${DETAIL_COST_JOIN}
 WHERE ppm.DateRecorded BETWEEN :startDate AND :endDate
   AND (:platformID IS NULL OR ppm.PlatformID = :platformID)
   AND (:productID IS NULL OR ppm.ProductID = :productID)
+  AND (:detailID IS NULL OR ppm.DetailID = :detailID)
   AND (:categoryID IS NULL OR p.CategoryID = :categoryID)
 ORDER BY ppm.DateRecorded DESC
 `
@@ -201,20 +256,22 @@ SELECT
   SUM(ppm.SalesVolume)                              AS TotalSalesVolume,
   AVG(ppm.SellingPrice)                             AS AvgSellingPrice,
   SUM(${NET_PROFIT_EXPR} * ppm.SalesVolume)         AS TotalEarnings,
-  SUM(p.Cost_RMB * :exchangeRate * ppm.SalesVolume) AS TotalCost,
+  SUM(${COST_NTD_EXPR} * ppm.SalesVolume)           AS TotalCost,
   CASE
-    WHEN SUM(p.Cost_RMB * :exchangeRate * ppm.SalesVolume) > 0
+    WHEN SUM(${COST_NTD_EXPR} * ppm.SalesVolume) > 0
     THEN SUM(${NET_PROFIT_EXPR} * ppm.SalesVolume)
-         / SUM(p.Cost_RMB * :exchangeRate * ppm.SalesVolume) * 100.0
+         / SUM(${COST_NTD_EXPR} * ppm.SalesVolume) * 100.0
     ELSE 0
   END                                               AS NetProfitMargin
 FROM ProductPlatformMappings ppm
 JOIN Products  p  ON ppm.ProductID  = p.ProductID
 JOIN Platforms pl ON ppm.PlatformID = pl.PlatformID
 ${FEE_SUM_JOIN}
+${DETAIL_COST_JOIN}
 WHERE ppm.DateRecorded BETWEEN :startDate AND :endDate
   AND (:platformID IS NULL OR ppm.PlatformID = :platformID)
   AND (:productID IS NULL OR ppm.ProductID = :productID)
+  AND (:detailID IS NULL OR ppm.DetailID = :detailID)
   AND (:categoryID IS NULL OR p.CategoryID = :categoryID)
 GROUP BY p.ProductID, ppm.PlatformID, DATE(ppm.DateRecorded)
 ORDER BY date DESC, TotalEarnings DESC
@@ -231,9 +288,11 @@ FROM ProductPlatformMappings ppm
 JOIN Products  p  ON ppm.ProductID  = p.ProductID
 JOIN Platforms pl ON ppm.PlatformID = pl.PlatformID
 ${FEE_SUM_JOIN}
+${DETAIL_COST_JOIN}
 WHERE ppm.DateRecorded BETWEEN :startDate AND :endDate
   AND (:platformID IS NULL OR ppm.PlatformID = :platformID)
   AND (:productID IS NULL OR ppm.ProductID = :productID)
+  AND (:detailID IS NULL OR ppm.DetailID = :detailID)
   AND (:categoryID IS NULL OR p.CategoryID = :categoryID)
 GROUP BY DATE(ppm.DateRecorded), ppm.PlatformID
 ORDER BY date ASC

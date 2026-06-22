@@ -20,6 +20,7 @@ function toSqlParams(filter: AnalyticsFilter) {
     ':endDate': filter.endDate,
     ':platformID': filter.platformID ?? null,
     ':productID': filter.productID ?? null,
+    ':detailID': filter.detailID ?? null,
     ':categoryID': filter.categoryID ?? null
   }
 }
@@ -45,6 +46,7 @@ export class SqliteMappingRepository implements IMappingRepository {
       MappingID: uuidv4(),
       ProductID: input.ProductID,
       PlatformID: input.PlatformID,
+      DetailID: input.DetailID ?? null,
       DateRecorded: input.DateRecorded || new Date().toISOString(),
       PlatformTitle: input.PlatformTitle || '-',
       PlatformDescription: input.PlatformDescription || '-',
@@ -53,15 +55,16 @@ export class SqliteMappingRepository implements IMappingRepository {
     }
     run(
       `INSERT INTO ProductPlatformMappings
-         (MappingID, ProductID, PlatformID, DateRecorded,
+         (MappingID, ProductID, PlatformID, DetailID, DateRecorded,
           PlatformTitle, PlatformDescription, SellingPrice, SalesVolume)
        VALUES
-         (:MappingID, :ProductID, :PlatformID, :DateRecorded,
+         (:MappingID, :ProductID, :PlatformID, :DetailID, :DateRecorded,
           :PlatformTitle, :PlatformDescription, :SellingPrice, :SalesVolume)`,
       {
         ':MappingID': record.MappingID,
         ':ProductID': record.ProductID,
         ':PlatformID': record.PlatformID,
+        ':DetailID': record.DetailID,
         ':DateRecorded': record.DateRecorded,
         ':PlatformTitle': record.PlatformTitle,
         ':PlatformDescription': record.PlatformDescription,
@@ -77,11 +80,14 @@ export class SqliteMappingRepository implements IMappingRepository {
   // stays correct. Title/description are only overwritten when meaningfully given.
   createOrMergeDaily(input: CreateMappingInput): ProductPlatformMapping {
     const day = (input.DateRecorded || new Date().toISOString()).slice(0, 10)
+    // Same product + platform + detail + day merges into one record (per spec).
     const existing = stmtGet<ProductPlatformMapping>(
       `SELECT * FROM ProductPlatformMappings
-       WHERE ProductID = :pid AND PlatformID = :plid AND DATE(DateRecorded) = :day
+       WHERE ProductID = :pid AND PlatformID = :plid
+         AND IFNULL(DetailID, '') = IFNULL(:did, '')
+         AND DATE(DateRecorded) = :day
        LIMIT 1`,
-      { ':pid': input.ProductID, ':plid': input.PlatformID, ':day': day }
+      { ':pid': input.ProductID, ':plid': input.PlatformID, ':did': input.DetailID ?? null, ':day': day }
     )
     if (!existing) return this.create(input)
 

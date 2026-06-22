@@ -10,6 +10,7 @@ import { SqlitePlatformRepository } from './repositories/SqlitePlatformRepositor
 import { SqlitePlatformFeeRepository } from './repositories/SqlitePlatformFeeRepository'
 import { SqliteMappingRepository } from './repositories/SqliteMappingRepository'
 import { SqliteCategoryRepository } from './repositories/SqliteCategoryRepository'
+import { SqliteDetailRepository } from './repositories/SqliteDetailRepository'
 import { InventoryService } from './core/services/InventoryService'
 import { SalesAnalyticsService } from './core/services/SalesAnalyticsService'
 import { registerProductHandlers } from './ipc/productHandlers'
@@ -18,6 +19,7 @@ import { registerMappingHandlers } from './ipc/mappingHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerCategoryHandlers } from './ipc/categoryHandlers'
 import { registerCurrencyHandlers } from './ipc/currencyHandlers'
+import { registerDetailHandlers } from './ipc/detailHandlers'
 import { registerSystemHandlers } from './ipc/systemHandlers'
 import { IPC } from '../shared/types'
 
@@ -34,19 +36,22 @@ async function bootstrap(): Promise<void> {
   const platformFeeRepo = new SqlitePlatformFeeRepository()
   const mappingRepo     = new SqliteMappingRepository()
   const categoryRepo    = new SqliteCategoryRepository()
+  const detailRepo      = new SqliteDetailRepository()
 
   const inventoryService = new InventoryService(
     productRepo,
     platformRepo,
     mappingRepo,
     categoryRepo,
-    platformFeeRepo
+    platformFeeRepo,
+    detailRepo
   )
   const analyticsService = new SalesAnalyticsService(mappingRepo)
 
   registerAuthHandlers()
   registerCategoryHandlers(inventoryService)
   registerCurrencyHandlers()
+  registerDetailHandlers(inventoryService)
   registerProductHandlers(inventoryService)
   registerPlatformHandlers(inventoryService)
   registerMappingHandlers(inventoryService, analyticsService)

@@ -7,6 +7,8 @@ import type {
   UpdateCategoryInput,
   CreateCurrencyInput,
   UpdateCurrencyInput,
+  CreateDetailInput,
+  UpdateDetailInput,
   CreateProductInput,
   UpdateProductInput,
   CreatePlatformInput,
@@ -47,6 +49,15 @@ const api = {
     create: (input: CreateCurrencyInput) => ipcRenderer.invoke(IPC.CURRENCIES.CREATE, input),
     update: (code: string, input: UpdateCurrencyInput) => ipcRenderer.invoke(IPC.CURRENCIES.UPDATE, code, input),
     delete: (code: string) => ipcRenderer.invoke(IPC.CURRENCIES.DELETE, code)
+  },
+
+  details: {
+    getByProduct: (productID: string) => ipcRenderer.invoke(IPC.DETAILS.GET_BY_PRODUCT, productID),
+    getAll: () => ipcRenderer.invoke(IPC.DETAILS.GET_ALL),
+    create: (input: CreateDetailInput) => ipcRenderer.invoke(IPC.DETAILS.CREATE, input),
+    update: (detailID: string, input: UpdateDetailInput) => ipcRenderer.invoke(IPC.DETAILS.UPDATE, detailID, input),
+    delete: (detailID: string) => ipcRenderer.invoke(IPC.DETAILS.DELETE, detailID),
+    reorder: (orderedIds: string[]) => ipcRenderer.invoke(IPC.DETAILS.REORDER, orderedIds)
   },
 
   products: {

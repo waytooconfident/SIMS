@@ -83,11 +83,39 @@ export interface ProductPlatformMapping {
   MappingID: string
   ProductID: string          // FK → Products
   PlatformID: string         // FK → Platforms
+  DetailID: string | null    // FK → ProductDetails (null = product-level sale)
   DateRecorded: string       // ISO datetime, used for time-range filtering
   PlatformTitle: string      // listing title ("-" if unset)
   PlatformDescription: string
   SellingPrice: number       // per-unit selling price
   SalesVolume: number
+}
+
+// ─── Product details (變體/SKU) ──────────────────────────────────────────────
+// A product may have several "details" (variants). When it does, sales/stock/
+// cost/profit are tracked per detail and the product row shows the aggregate.
+export interface DetailCost {
+  CostID: string
+  DetailID: string
+  CostName: string           // optional label, e.g. '進貨' / '運費'
+  Amount: number             // amount in CurrencyCode
+  CurrencyCode: string       // FK → Currencies
+  SortOrder: number
+}
+
+export interface ProductDetail {
+  DetailID: string
+  ProductID: string          // FK → Products
+  DetailName: string
+  ImageKey: string | null    // null = inherit the parent product's image
+  ImagePath: string | null
+  SellingPrice: number       // NT$
+  StockQuantity: number
+  SortOrder: number
+  CreatedAt: string
+  UpdatedAt: string
+  costs: DetailCost[]         // joined cost line-items
+  TotalCostNTD: number       // computed: Σ(Amount × currency rate)
 }
 
 // ─── Computed / Derived DTOs ─────────────────────────────────────────────────
@@ -102,6 +130,7 @@ export interface ProductPlatformMapping {
 
 export interface MappingWithCalc extends ProductPlatformMapping {
   PlatformName: string
+  DetailName: string | null   // joined: the detail's name (null for product-level)
   CategoryID: string
   ImageKey: string | null
   ImagePath: string | null
@@ -147,6 +176,7 @@ export type TimePreset = 'today' | '7d' | '30d' | '90d' | '180d' | '365d' | 'all
 export interface AnalyticsFilter {
   platformID: string | null   // null = all platforms (aggregated)
   productID?: string | null   // null = all products
+  detailID?: string | null    // null = all details (or the product's aggregate)
   categoryID?: string | null  // null = all categories
   startDate: string           // ISO datetime
   endDate: string             // ISO datetime
@@ -188,6 +218,14 @@ export const IPC = {
     CREATE: 'currencies:create',
     UPDATE: 'currencies:update',
     DELETE: 'currencies:delete'
+  },
+  DETAILS: {
+    GET_BY_PRODUCT: 'details:getByProduct',
+    GET_ALL: 'details:getAll',
+    CREATE: 'details:create',
+    UPDATE: 'details:update',
+    DELETE: 'details:delete',
+    REORDER: 'details:reorder'
   },
   PRODUCTS: {
     GET_ALL: 'products:getAll',
@@ -259,18 +297,34 @@ export type UpdatePlatformInput = Partial<{ PlatformName: string; FixedFee: numb
 export type CreatePlatformFeeInput = { PlatformID: string; FeeName: string; FeePercentage: number; FeeType?: FeeType }
 export type UpdatePlatformFeeInput = Partial<{ FeeName: string; FeePercentage: number; FeeType: FeeType; SortOrder: number }>
 
-export type CreateMappingInput = Omit<ProductPlatformMapping, 'MappingID'>
-export type UpdateMappingInput = Partial<Omit<ProductPlatformMapping, 'MappingID' | 'ProductID' | 'PlatformID'>>
+export type CreateMappingInput = Omit<ProductPlatformMapping, 'MappingID' | 'DetailID'> & { DetailID?: string | null }
+export type UpdateMappingInput = Partial<Omit<ProductPlatformMapping, 'MappingID' | 'ProductID' | 'PlatformID' | 'DetailID'>>
 
 // Title/description belong to a product×platform listing, not to one sales record,
 // so editing them bulk-updates every record for that product on that platform.
 export type UpdateListingInput = { PlatformTitle: string; PlatformDescription: string }
 
+// ─── Product detail (變體) inputs ────────────────────────────────────────────
+export type DetailCostInput = { CostName?: string; Amount: number; CurrencyCode: string }
+export type CreateDetailInput = {
+  ProductID: string
+  DetailName: string
+  ImageKey?: string | null
+  ImagePath?: string | null
+  SellingPrice?: number
+  StockQuantity?: number
+  costs: DetailCostInput[]
+}
+export type UpdateDetailInput = Partial<Omit<CreateDetailInput, 'ProductID'>>
+
 // Recording a sale: appends a dated sales record and decrements stock.
+// For a product WITH details, `details` lists the variant(s) sold together;
+// otherwise the product-level sellingPrice/quantity are used.
 export type SellInput = {
   productID: string
   platformID: string
   date: string             // ISO datetime (day precision is fine)
-  sellingPrice: number
-  quantity: number
+  sellingPrice?: number
+  quantity?: number
+  details?: { detailID: string; quantity: number; sellingPrice: number }[]
 }

@@ -95,6 +95,11 @@ function migrate(database: SqlJsDb): void {
   if (tableExists(database, 'Products') && !columnExists(database, 'Products', 'SortOrder')) {
     database.run('ALTER TABLE Products ADD COLUMN SortOrder INTEGER NOT NULL DEFAULT 0')
   }
+  // v5 → v6: add DetailID to mappings so sales can be tracked per variant. (The
+  // ProductDetails/DetailCosts tables are created above via CREATE IF NOT EXISTS.)
+  if (tableExists(database, 'ProductPlatformMappings') && !columnExists(database, 'ProductPlatformMappings', 'DetailID')) {
+    database.run('ALTER TABLE ProductPlatformMappings ADD COLUMN DetailID TEXT')
+  }
   database.run(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 
