@@ -5,10 +5,12 @@ interface FilterState {
   timePreset: TimePreset
   platformID: string | null   // null = all platforms
   productID: string | null    // null = all products
+  detailID: string | null     // null = product aggregate (all its details)
   categoryID: string | null   // null = all categories
   setTimePreset: (p: TimePreset) => void
   setPlatformID: (id: string | null) => void
   setProductID: (id: string | null) => void
+  setDetail: (productID: string, detailID: string) => void
   setCategoryID: (id: string | null) => void
   buildFilter: (exchangeRate: number) => AnalyticsFilter
 }
@@ -36,17 +38,20 @@ export const useFilterStore = create<FilterState>((set, get) => ({
   timePreset: 'all',
   platformID: null,
   productID: null,
+  detailID: null,
   categoryID: null,
 
   setTimePreset: (p) => set({ timePreset: p }),
   setPlatformID: (id) => set({ platformID: id }),
-  // Selecting a specific product clears the category filter and vice-versa.
-  setProductID: (id) => set({ productID: id, categoryID: id ? null : get().categoryID }),
-  setCategoryID: (id) => set({ categoryID: id, productID: id ? null : get().productID }),
+  // Selecting a specific product clears the category filter (and the detail).
+  setProductID: (id) => set({ productID: id, detailID: null, categoryID: id ? null : get().categoryID }),
+  // Drill into one detail of a product.
+  setDetail: (productID, detailID) => set({ productID, detailID, categoryID: null }),
+  setCategoryID: (id) => set({ categoryID: id, productID: id ? null : get().productID, detailID: null }),
 
   buildFilter: (exchangeRate: number): AnalyticsFilter => {
-    const { timePreset, platformID, productID, categoryID } = get()
+    const { timePreset, platformID, productID, detailID, categoryID } = get()
     const { startDate, endDate } = dateRangeForPreset(timePreset)
-    return { platformID, productID, categoryID, startDate, endDate, exchangeRate }
+    return { platformID, productID, detailID, categoryID, startDate, endDate, exchangeRate }
   }
 }))

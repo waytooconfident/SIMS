@@ -6,10 +6,11 @@ import { TopBar } from './components/layout/TopBar'
 import { InventoryView } from './views/InventoryView'
 import { AnalyticsView } from './views/AnalyticsView'
 import { SettingsView } from './views/SettingsView'
+import { SalesRecordsView } from './views/SalesRecordsView'
 import { PopoutView } from './views/PopoutView'
 import { LoginView } from './views/LoginView'
 
-export type ActiveView = 'inventory' | 'analytics' | 'settings'
+export type ActiveView = 'sales' | 'inventory' | 'analytics' | 'settings'
 
 export default function App() {
   const [view, setView] = useState<ActiveView>('inventory')
@@ -33,6 +34,7 @@ export default function App() {
         <TopBar activeView={view} />
 
         <main className="flex-1 overflow-y-auto p-6">
+          {view === 'sales'      && <SalesRecordsView />}
           {view === 'inventory'  && <InventoryView onNavigate={setView} />}
           {view === 'analytics'  && <AnalyticsView />}
           {view === 'settings'   && <SettingsView />}

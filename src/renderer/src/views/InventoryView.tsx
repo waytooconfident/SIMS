@@ -4,8 +4,10 @@ import { useProducts } from '../hooks/useProducts'
 import { usePlatforms } from '../hooks/usePlatforms'
 import { useMappings } from '../hooks/useMappings'
 import { useCategories } from '../hooks/useCategories'
+import { useDetails } from '../hooks/useDetails'
 import { useExchangeRateStore } from '../stores/useExchangeRateStore'
 import { useFilterStore } from '../stores/useFilterStore'
+import { useSalesFilterStore } from '../stores/useSalesFilterStore'
 import { InventoryTable, type ListingView, type InventorySize } from '../components/inventory/InventoryTable'
 import { ProductFormModal, type PlatformBinding } from '../components/inventory/ProductFormModal'
 import { MappingFormModal } from '../components/inventory/MappingFormModal'
@@ -25,8 +27,10 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
   const { platforms, load: loadPlatforms } = usePlatforms()
   const { categories, load: loadCategories, nameOf } = useCategories()
   const { mappings, loadMappings, create: createMapping, update: updateMapping, remove: removeMapping } = useMappings()
+  const { byProduct: detailsByProduct, load: loadDetails } = useDetails()
   const rate = useExchangeRateStore((s) => s.rate)
   const setFilterProduct = useFilterStore((s) => s.setProductID)
+  const applySalesFilter = useSalesFilterStore((s) => s.applyFrom)
 
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState<string>('')
@@ -40,7 +44,7 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
   const refreshMappings = () =>
     loadMappings({ platformID: null, startDate: '1970-01-01T00:00:00.000Z', endDate: new Date().toISOString(), exchangeRate: rate })
 
-  useEffect(() => { loadProducts(); loadPlatforms(); loadCategories(); refreshMappings() }, [rate])
+  useEffect(() => { loadProducts(); loadPlatforms(); loadCategories(); loadDetails(); refreshMappings() }, [rate])
 
   // Search matches: product ID, image filename, category name, OR any platform title.
   const filteredProducts = products.filter((p) => {
@@ -98,7 +102,14 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
     refreshMappings()
   }
 
-  const handleSell = async (input: SellInput) => { await window.api.products.sell(input); await loadProducts(); refreshMappings() }
+  const handleSell = async (input: SellInput) => { await window.api.products.sell(input); await loadProducts(); loadDetails(); refreshMappings() }
+  const handleReorderDetails = async (orderedIds: string[]) => { await window.api.details.reorder(orderedIds); loadDetails() }
+
+  // Jump to the Sales Records page filtered to this product (+ current filters).
+  const handleViewSales = (productID: string) => {
+    applySalesFilter({ productID, platformID: platformFilter || null, categoryID: categoryFilter || null })
+    onNavigate('sales')
+  }
   const handleEditRecord = async (input: UpdateMappingInput, mappingID: string) => { await updateMapping(mappingID, input); refreshMappings() }
   const handleEditListing = async (productID: string, platformID: string, title: string, description: string) => {
     await window.api.mappings.updateListing(productID, platformID, title, description); refreshMappings()
@@ -145,12 +156,15 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           products={filteredProducts}
           mappings={mappings}
           categoryName={nameOf}
+          detailsByProduct={detailsByProduct}
           size={size}
           onReorder={reorder}
+          onReorderDetails={handleReorderDetails}
           onEditProduct={(p) => setProductModal({ open: true, target: p })}
           onDeleteProduct={handleDeleteProduct}
           onSellProduct={(p) => setSellModal({ open: true, target: p })}
           onAnalyze={handleAnalyze}
+          onViewSales={handleViewSales}
           onEditListing={(l) => setListingModal({ open: true, target: l })}
           onEditRecord={(m) => setRecordModal({ open: true, target: m })}
           onDeleteRecord={async (id) => { await removeMapping(id); refreshMappings() }}
@@ -165,6 +179,7 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           productMappings={productModal.target ? mappings.filter((m) => m.ProductID === productModal.target!.ProductID) : []}
           onSave={handleSaveProduct}
           onClose={() => setProductModal({ open: false })}
+          onDetailsChanged={() => { loadDetails(); refreshMappings() }}
         />
       )}
 

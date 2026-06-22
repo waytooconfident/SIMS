@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X, ImagePlus, Link2, AlertTriangle } from 'lucide-react'
+import { X, ImagePlus, Link2, AlertTriangle, Boxes } from 'lucide-react'
 import type {
   Product, Category, Platform, MappingWithCalc, CreateProductInput, UpdateProductInput
 } from '@shared/types'
+import { DetailsManagerModal } from './DetailsManagerModal'
 
 export interface PlatformBinding {
   platformID: string
@@ -19,6 +20,7 @@ interface ProductFormModalProps {
   productMappings?: MappingWithCalc[]   // this product's current records (edit mode)
   onSave: (input: CreateProductInput | UpdateProductInput, additions: PlatformBinding[], removals: string[]) => Promise<void>
   onClose: () => void
+  onDetailsChanged?: () => void         // called after the 細項 manager saves
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p
@@ -29,8 +31,9 @@ const dirName = (p: string) => {
 
 type BindState = { listed: boolean; checked: boolean; price: string; volume: string; title: string; desc: string }
 
-export function ProductFormModal({ product, categories, platforms, productMappings = [], onSave, onClose }: ProductFormModalProps) {
+export function ProductFormModal({ product, categories, platforms, productMappings = [], onSave, onClose, onDetailsChanged }: ProductFormModalProps) {
   const isEdit = !!product
+  const [showDetails, setShowDetails] = useState(false)
 
   const [form, setForm] = useState({
     CategoryID: '000', ImageKey: '', ImagePath: '', Cost_RMB: '', CompetitorPrice: '', StockQuantity: '', LocalFolderPath: ''
@@ -183,6 +186,16 @@ export function ProductFormModal({ product, categories, platforms, productMappin
 
           {isEdit && <p className="text-xs text-gray-400 -mt-2">PK：<span className="font-mono">{product!.ProductID}</span>　變更分類會自動重新編號（資料保留）。</p>}
 
+          {/* Product details (變體) — only once the product exists (needs a ProductID). */}
+          {isEdit ? (
+            <button type="button" onClick={() => setShowDetails(true)}
+              className="btn-secondary w-full justify-center border-dashed">
+              <Boxes size={15} /> 管理 / 新增商品細項
+            </button>
+          ) : (
+            <p className="text-xs text-gray-400">＊先建立商品後，再次編輯即可新增「商品細項」。</p>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">RMB 成本 (¥)</label><input className="input" type="number" min="0" step="0.01" value={form.Cost_RMB} onChange={(e) => set('Cost_RMB', e.target.value)} placeholder="0.00" /></div>
             <div><label className="label">競品大約價格 (NT$)</label><input className="input" type="number" min="0" step="1" value={form.CompetitorPrice} onChange={(e) => set('CompetitorPrice', e.target.value)} placeholder="選填" /></div>
@@ -228,6 +241,15 @@ export function ProductFormModal({ product, categories, platforms, productMappin
           <button onClick={handleSubmit} disabled={saving} className="btn-primary">{saving ? '儲存中…' : '儲存'}</button>
         </div>
       </div>
+
+      {/* Product-details manager (stacked above this modal) */}
+      {showDetails && product && (
+        <DetailsManagerModal
+          product={product}
+          onClose={() => setShowDetails(false)}
+          onSaved={() => onDetailsChanged?.()}
+        />
+      )}
 
       {/* Remove-with-history warning */}
       {removalWarn && (

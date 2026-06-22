@@ -4,6 +4,7 @@ import { usePlatforms } from '../hooks/usePlatforms'
 import { useProducts } from '../hooks/useProducts'
 import { useCategories } from '../hooks/useCategories'
 import { useMappings } from '../hooks/useMappings'
+import { useDetails } from '../hooks/useDetails'
 import { useExchangeRateStore } from '../stores/useExchangeRateStore'
 import { useFilterStore } from '../stores/useFilterStore'
 import { FilterBar } from '../components/analytics/FilterBar'
@@ -31,8 +32,9 @@ export function AnalyticsView() {
   const { products, load: loadProducts } = useProducts()
   const { categories, load: loadCategories } = useCategories()
   const { analytics, chartData, loading, overallTotals, loadMappings } = useMappings()
+  const { byProduct: detailsByProduct, load: loadDetails } = useDetails()
   const rate = useExchangeRateStore((s) => s.rate)
-  const { timePreset, platformID, productID, categoryID, setTimePreset, setPlatformID, setProductID, setCategoryID, buildFilter } = useFilterStore()
+  const { timePreset, platformID, productID, detailID, categoryID, setTimePreset, setPlatformID, setProductID, setDetail, setCategoryID, buildFilter } = useFilterStore()
 
   const [chartMode, setChartMode] = useState<'revenue' | 'sales'>('revenue')
   const [sortField, setSortField] = useState<SortField>('earnings')
@@ -41,9 +43,9 @@ export function AnalyticsView() {
   const [comparePanels, setComparePanels] = useState<number[]>([1, 2])
   const [nextPanelId, setNextPanelId] = useState(3)
 
-  const filter = useMemo(() => buildFilter(rate), [timePreset, platformID, productID, categoryID, rate, buildFilter])
+  const filter = useMemo(() => buildFilter(rate), [timePreset, platformID, productID, detailID, categoryID, rate, buildFilter])
 
-  useEffect(() => { loadPlatforms(); loadProducts(); loadCategories() }, [])
+  useEffect(() => { loadPlatforms(); loadProducts(); loadCategories(); loadDetails() }, [])
   useEffect(() => { loadMappings(filter) }, [filter, loadMappings])
 
   const sortedAnalytics = useMemo(() => {
@@ -90,6 +92,9 @@ export function AnalyticsView() {
           <ProductCategoryFilter
             categories={categories}
             products={products}
+            detailID={detailID}
+            detailsByProduct={detailsByProduct}
+            onSelectDetail={setDetail}
             productID={productID}
             categoryID={categoryID}
             onSelectAll={() => { setProductID(null); setCategoryID(null) }}

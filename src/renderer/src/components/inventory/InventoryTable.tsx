@@ -1,8 +1,9 @@
 import { useState, Fragment } from 'react'
-import { Pencil, Trash2, FolderOpen, ChevronDown, ChevronRight, ShoppingCart, Tag, GripVertical, BarChart2 } from 'lucide-react'
-import type { Product, MappingWithCalc } from '@shared/types'
+import { Pencil, Trash2, FolderOpen, ChevronDown, ChevronRight, ShoppingCart, Tag, GripVertical, BarChart2, Receipt, Boxes } from 'lucide-react'
+import type { Product, MappingWithCalc, ProductDetail } from '@shared/types'
 import { useExchangeRateStore } from '../../stores/useExchangeRateStore'
 import { Thumbnail } from './Thumbnail'
+import { InventoryDetailRows } from './InventoryDetailRows'
 
 export type InventorySize = 'sm' | 'md' | 'lg'
 const THUMB: Record<InventorySize, number> = { sm: 40, md: 64, lg: 96 }
@@ -26,12 +27,15 @@ interface InventoryTableProps {
   products: Product[]
   mappings: MappingWithCalc[]
   categoryName: (id: string) => string
+  detailsByProduct: (productID: string) => ProductDetail[]
   size: InventorySize
   onReorder: (draggedId: string, targetId: string) => void
+  onReorderDetails: (orderedIds: string[]) => void
   onEditProduct: (p: Product) => void
   onDeleteProduct: (productID: string) => void
   onSellProduct: (p: Product) => void
   onAnalyze: (productID: string) => void
+  onViewSales: (productID: string) => void
   onEditListing: (l: ListingView) => void
   onEditRecord: (m: MappingWithCalc) => void
   onDeleteRecord: (mappingID: string) => void
@@ -66,8 +70,8 @@ function buildListings(rows: MappingWithCalc[]): ListingView[] {
 }
 
 export function InventoryTable({
-  products, mappings, categoryName, size, onReorder,
-  onEditProduct, onDeleteProduct, onSellProduct, onAnalyze, onEditListing, onEditRecord, onDeleteRecord
+  products, mappings, categoryName, detailsByProduct, size, onReorder, onReorderDetails,
+  onEditProduct, onDeleteProduct, onSellProduct, onAnalyze, onViewSales, onEditListing, onEditRecord, onDeleteRecord
 }: InventoryTableProps) {
   const rate = useExchangeRateStore((s) => s.rate)
   const [openProducts, setOpenProducts] = useState<Set<string>>(new Set())
@@ -115,7 +119,17 @@ export function InventoryTable({
             const isOpen = openProducts.has(p.ProductID)
             const rows = mappings.filter((m) => m.ProductID === p.ProductID)
             const listings = buildListings(rows)
+            const details = detailsByProduct(p.ProductID)
+            const hasDetails = details.length > 0
             const costNTD = p.Cost_RMB * rate
+            // Aggregate display when the product has details.
+            const stockDisplay = hasDetails ? details.reduce((s, d) => s + d.StockQuantity, 0) : p.StockQuantity
+            const detailCosts = details.map((d) => d.TotalCostNTD)
+            const costDisplay = hasDetails
+              ? (Math.min(...detailCosts) === Math.max(...detailCosts)
+                  ? `NT$${Math.min(...detailCosts).toFixed(0)}`
+                  : `NT$${Math.min(...detailCosts).toFixed(0)}–${Math.max(...detailCosts).toFixed(0)}`)
+              : `NT$${costNTD.toFixed(0)}`
             const totalVol = rows.reduce((s, r) => s + r.SalesVolume, 0)
             const totalEarnings = rows.reduce((s, r) => s + r.TotalEarnings, 0)
             const avgPrice = totalVol > 0
@@ -138,12 +152,14 @@ export function InventoryTable({
                   <td className={`px-1 ${pad} text-gray-300`} title="拖曳排序"><GripVertical size={14} /></td>
                   <td className={`px-1 ${pad} text-gray-400`}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                   <td className={`px-4 ${pad}`}><Thumbnail path={p.ImagePath} size={THUMB[size]} /></td>
-                  <td className={`px-4 ${pad} font-mono font-medium text-indigo-700`}>{p.ProductID}</td>
+                  <td className={`px-4 ${pad} font-mono font-medium text-indigo-700`}>
+                    <span className="inline-flex items-center gap-1">{p.ProductID}{hasDetails && <span title={`${details.length} 個細項`} className="badge badge-blue gap-0.5 !px-1.5"><Boxes size={10} />{details.length}</span>}</span>
+                  </td>
                   <td className={`px-4 ${pad}`}><span className="badge badge-gray">{categoryName(p.CategoryID)}</span></td>
-                  <td className={`px-4 ${pad} text-sm`}>¥{p.Cost_RMB.toFixed(2)}</td>
-                  <td className={`px-4 ${pad} text-sm`}>NT${costNTD.toFixed(0)}</td>
+                  <td className={`px-4 ${pad} text-sm`}>{hasDetails ? <span className="text-gray-400">—</span> : `¥${p.Cost_RMB.toFixed(2)}`}</td>
+                  <td className={`px-4 ${pad} text-sm`}>{costDisplay}</td>
                   <td className={`px-4 ${pad} text-sm`}>{p.CompetitorPrice != null ? `NT$${p.CompetitorPrice}` : '-'}</td>
-                  <td className={`px-4 ${pad}`}><span className={`badge ${p.StockQuantity > 0 ? 'badge-green' : 'badge-red'}`}>{p.StockQuantity}</span></td>
+                  <td className={`px-4 ${pad}`}><span className={`badge ${stockDisplay > 0 ? 'badge-green' : 'badge-red'}`}>{stockDisplay}</span></td>
                   <td className={`px-4 ${pad} text-sm`}>{rows.length ? `NT$${avgPrice.toFixed(0)}` : '-'}</td>
                   <td className={`px-4 ${pad} text-sm font-medium ${avgProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{rows.length ? `NT$${avgProfit.toFixed(0)}` : '-'}</td>
                   <td className={`px-4 ${pad} text-sm ${avgMargin >= 0 ? 'text-green-600' : 'text-red-600'}`}>{rows.length ? `${avgMargin.toFixed(1)}%` : '-'}</td>
@@ -158,6 +174,7 @@ export function InventoryTable({
                   </td>
                   <td className={`px-4 ${pad}`}>
                     <div className="flex gap-1.5 justify-end" onClick={(e) => e.stopPropagation()}>
+                      <button className="btn-ghost p-1.5 text-indigo-600 hover:bg-indigo-50" title="查看銷售紀錄" onClick={() => onViewSales(p.ProductID)}><Receipt size={14} /></button>
                       <button className="btn-ghost p-1.5 text-blue-600 hover:bg-blue-50" title="分析此商品" onClick={() => onAnalyze(p.ProductID)}><BarChart2 size={14} /></button>
                       <button className="btn-ghost p-1.5 text-green-600 hover:bg-green-50" title="賣出" onClick={() => onSellProduct(p)}><ShoppingCart size={14} /></button>
                       <button className="btn-ghost p-1.5" title="編輯商品" onClick={() => onEditProduct(p)}><Pencil size={14} /></button>
@@ -166,10 +183,13 @@ export function InventoryTable({
                   </td>
                 </tr>
 
-                {/* Level 1: platform listings */}
+                {/* Level 1: product details (if any) OR platform listings */}
                 {isOpen && (
                   <tr>
-                    <td colSpan={COLS} className="p-0 bg-indigo-50/40">
+                    <td colSpan={COLS} className="p-0 bg-indigo-50/40 dark:bg-gray-900/30">
+                      {hasDetails ? (
+                        <InventoryDetailRows product={p} details={details} mappings={rows} onReorderDetails={onReorderDetails} />
+                      ) : (
                       <div className="p-4">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">各平台上架與銷售</p>
                         {listings.length === 0 ? (
@@ -259,6 +279,7 @@ export function InventoryTable({
                           </table>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 )}

@@ -6,6 +6,7 @@ import { ThemeToggle } from '../common/ThemeToggle'
 import type { ActiveView } from '../../App'
 
 const VIEW_LABELS: Record<ActiveView, string> = {
+  sales:      '銷售紀錄',
   inventory:  '庫存管理',
   analytics:  '數據分析',
   settings:   '系統設定'

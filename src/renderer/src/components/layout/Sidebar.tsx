@@ -1,7 +1,8 @@
-import { Package, BarChart2, Settings } from 'lucide-react'
+import { Package, BarChart2, Settings, Receipt } from 'lucide-react'
 import type { ActiveView } from '../../App'
 
 const NAV_ITEMS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
+  { id: 'sales',      label: '銷售紀錄',   icon: <Receipt size={18} /> },
   { id: 'inventory',  label: '庫存管理',   icon: <Package size={18} /> },
   { id: 'analytics',  label: '數據分析',   icon: <BarChart2 size={18} /> },
   { id: 'settings',   label: '系統設定',   icon: <Settings size={18} /> }
