@@ -5,6 +5,8 @@ import type {
   UpdateUserInput,
   CreateCategoryInput,
   UpdateCategoryInput,
+  CreateCurrencyInput,
+  UpdateCurrencyInput,
   CreateProductInput,
   UpdateProductInput,
   CreatePlatformInput,
@@ -38,6 +40,13 @@ const api = {
     create: (input: CreateCategoryInput) => ipcRenderer.invoke(IPC.CATEGORIES.CREATE, input),
     update: (id: string, input: UpdateCategoryInput) => ipcRenderer.invoke(IPC.CATEGORIES.UPDATE, id, input),
     delete: (id: string) => ipcRenderer.invoke(IPC.CATEGORIES.DELETE, id)
+  },
+
+  currencies: {
+    getAll: () => ipcRenderer.invoke(IPC.CURRENCIES.GET_ALL),
+    create: (input: CreateCurrencyInput) => ipcRenderer.invoke(IPC.CURRENCIES.CREATE, input),
+    update: (code: string, input: UpdateCurrencyInput) => ipcRenderer.invoke(IPC.CURRENCIES.UPDATE, code, input),
+    delete: (code: string) => ipcRenderer.invoke(IPC.CURRENCIES.DELETE, code)
   },
 
   products: {

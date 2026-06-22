@@ -9,7 +9,8 @@
 //   v3: PlatformFees gains FeeType ('percent' | 'fixed') — fixed fees are now
 //       just fee line-items (added non-destructively via ALTER TABLE).
 //   v4: Products gains SortOrder for manual drag-reordering (ALTER TABLE).
-export const SCHEMA_VERSION = 4
+//   v5: Currencies table (multi-currency support; created via CREATE IF NOT EXISTS).
+export const SCHEMA_VERSION = 5
 
 // Drops the restructured tables (children first for FK safety). Settings is left
 // intact so the user's exchange rate / preferences survive a schema reset.
@@ -94,6 +95,17 @@ CREATE INDEX IF NOT EXISTS idx_mappings_platformid  ON ProductPlatformMappings(P
 CREATE INDEX IF NOT EXISTS idx_mappings_date        ON ProductPlatformMappings(DateRecorded);
 CREATE INDEX IF NOT EXISTS idx_platformfees_plat    ON PlatformFees(PlatformID);
 
+-- ─── Currencies ────────────────────────────────────────────────────────────
+-- Named currencies and their exchange rate to NT$. 'TWD' is the base (rate 1)
+-- and is protected from edit/delete. Used by product-detail costs.
+CREATE TABLE IF NOT EXISTS Currencies (
+  CurrencyCode TEXT PRIMARY KEY,
+  CurrencyName TEXT NOT NULL,
+  RateToTWD    REAL NOT NULL DEFAULT 1,
+  SortOrder    INTEGER NOT NULL DEFAULT 0,
+  CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ─── Settings (key-value store) ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS Settings (
   Key   TEXT PRIMARY KEY,
@@ -105,6 +117,11 @@ INSERT OR IGNORE INTO Settings (Key, Value) VALUES ('exchangeRate', '4.45');
 INSERT OR IGNORE INTO Settings (Key, Value) VALUES ('compareMode', 'split');
 
 INSERT OR IGNORE INTO Categories (CategoryID, CategoryName) VALUES ('000', '未分類');
+
+INSERT OR IGNORE INTO Currencies (CurrencyCode, CurrencyName, RateToTWD, SortOrder) VALUES
+  ('TWD', '新台幣', 1,    0),
+  ('CNY', '人民幣', 4.45, 1),
+  ('USD', '美元',   32,   2);
 
 INSERT OR IGNORE INTO Platforms (PlatformID, PlatformName, FixedFee) VALUES
   ('shopee',   '蝦皮',   0),

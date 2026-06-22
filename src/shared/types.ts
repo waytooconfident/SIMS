@@ -19,6 +19,26 @@ export interface Category {
   CreatedAt: string
 }
 
+// ─── Currencies ────────────────────────────────────────────────────────────────
+// A named currency and how many NT$ one unit of it is worth. 'TWD' is the base
+// (RateToTWD = 1) and is not editable/deletable.
+export interface Currency {
+  CurrencyCode: string       // e.g. 'TWD','CNY','USD'
+  CurrencyName: string       // e.g. '新台幣','人民幣'
+  RateToTWD: number          // 1 unit = ? NT$
+  SortOrder: number
+  CreatedAt: string
+}
+export interface CreateCurrencyInput {
+  CurrencyCode: string
+  CurrencyName: string
+  RateToTWD: number
+}
+export interface UpdateCurrencyInput {
+  CurrencyName?: string
+  RateToTWD?: number
+}
+
 export type FeeType = 'percent' | 'fixed'
 
 export interface PlatformFee {
@@ -162,6 +182,12 @@ export const IPC = {
     CREATE: 'categories:create',
     UPDATE: 'categories:update',
     DELETE: 'categories:delete'
+  },
+  CURRENCIES: {
+    GET_ALL: 'currencies:getAll',
+    CREATE: 'currencies:create',
+    UPDATE: 'currencies:update',
+    DELETE: 'currencies:delete'
   },
   PRODUCTS: {
     GET_ALL: 'products:getAll',

@@ -30,5 +30,14 @@ export function Thumbnail({ path, size = 40 }: ThumbnailProps) {
       </div>
     )
   }
-  return <img src={url} style={box} className="object-cover rounded-md border border-gray-200 shrink-0" alt="" />
+  // object-contain shows the whole image (no cropping); the box stays square so
+  // rows stay aligned, with a light backdrop filling the letterbox area.
+  return (
+    <img
+      src={url}
+      style={box}
+      className="object-contain rounded-md border border-gray-200 bg-gray-50 dark:bg-gray-900 shrink-0"
+      alt=""
+    />
+  )
 }

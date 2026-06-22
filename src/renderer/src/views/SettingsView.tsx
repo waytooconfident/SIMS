@@ -1,4 +1,5 @@
 import { ExchangeRatePanel } from '../components/settings/ExchangeRatePanel'
+import { CurrencyManagePanel } from '../components/settings/CurrencyManagePanel'
 import { PlatformManagePanel } from '../components/settings/PlatformManagePanel'
 import { CategoryManagePanel } from '../components/settings/CategoryManagePanel'
 import { AccountPanel } from '../components/settings/AccountPanel'
@@ -14,6 +15,11 @@ export function SettingsView() {
       <div>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">全域參數</h2>
         <ExchangeRatePanel />
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">幣別與匯率</h2>
+        <CurrencyManagePanel />
       </div>
 
       <div>

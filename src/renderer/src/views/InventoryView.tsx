@@ -29,6 +29,7 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
   const setFilterProduct = useFilterStore((s) => s.setProductID)
 
   const [search, setSearch] = useState('')
+  const [platformFilter, setPlatformFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [size, setSize] = useState<InventorySize>('sm')
   const [productModal, setProductModal] = useState<{ open: boolean; target?: Product }>({ open: false })
@@ -49,8 +50,12 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
       || (p.ImageKey ?? '').toLowerCase().includes(q)
       || nameOf(p.CategoryID).toLowerCase().includes(q)
       || mappings.some((m) => m.ProductID === p.ProductID && (m.PlatformTitle ?? '').toLowerCase().includes(q))
+    // Platform filter: keep only products that are listed on the chosen platform.
+    const matchesPlatform = !platformFilter
+      || mappings.some((m) => m.ProductID === p.ProductID && m.PlatformID === platformFilter)
+    // Category filter (applies within the platform-filtered set).
     const matchesCategory = !categoryFilter || p.CategoryID === categoryFilter
-    return matchesSearch && matchesCategory
+    return matchesSearch && matchesPlatform && matchesCategory
   })
 
   const applyBindings = async (productID: string, additions: PlatformBinding[], removals: string[]) => {
@@ -111,6 +116,11 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input pl-8" placeholder="搜尋編號 / 圖名 / 分類 / 平台標題…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+
+        <select className="input !w-auto text-sm" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}>
+          <option value="">全部平台</option>
+          {platforms.map((p) => <option key={p.PlatformID} value={p.PlatformID}>{p.PlatformName}</option>)}
+        </select>
 
         <select className="input !w-auto text-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">全部分類</option>

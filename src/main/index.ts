@@ -17,6 +17,7 @@ import { registerPlatformHandlers } from './ipc/platformHandlers'
 import { registerMappingHandlers } from './ipc/mappingHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerCategoryHandlers } from './ipc/categoryHandlers'
+import { registerCurrencyHandlers } from './ipc/currencyHandlers'
 import { registerSystemHandlers } from './ipc/systemHandlers'
 import { IPC } from '../shared/types'
 
@@ -45,6 +46,7 @@ async function bootstrap(): Promise<void> {
 
   registerAuthHandlers()
   registerCategoryHandlers(inventoryService)
+  registerCurrencyHandlers()
   registerProductHandlers(inventoryService)
   registerPlatformHandlers(inventoryService)
   registerMappingHandlers(inventoryService, analyticsService)
