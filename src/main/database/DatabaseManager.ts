@@ -86,7 +86,11 @@ function migrate(database: SqlJsDb): void {
   if (tableExists(database, 'Products') && !columnExists(database, 'Products', 'CategoryID')) {
     database.exec(DROP_RESTRUCTURED_SQL)
   }
-  database.exec(CREATE_TABLES_SQL)
+
+  // IMPORTANT: add any missing columns on EXISTING tables BEFORE running the
+  // schema script, because CREATE_TABLES_SQL builds indexes that reference these
+  // columns (e.g. idx_mappings_detailid on DetailID). On a fresh DB these tables
+  // don't exist yet, so the guards skip and the columns arrive via CREATE TABLE.
   // v2 → v3: add FeeType to a PlatformFees table that predates it.
   if (tableExists(database, 'PlatformFees') && !columnExists(database, 'PlatformFees', 'FeeType')) {
     database.run("ALTER TABLE PlatformFees ADD COLUMN FeeType TEXT NOT NULL DEFAULT 'percent'")
@@ -95,11 +99,13 @@ function migrate(database: SqlJsDb): void {
   if (tableExists(database, 'Products') && !columnExists(database, 'Products', 'SortOrder')) {
     database.run('ALTER TABLE Products ADD COLUMN SortOrder INTEGER NOT NULL DEFAULT 0')
   }
-  // v5 → v6: add DetailID to mappings so sales can be tracked per variant. (The
-  // ProductDetails/DetailCosts tables are created above via CREATE IF NOT EXISTS.)
+  // v5 → v6: add DetailID to mappings so sales can be tracked per variant.
   if (tableExists(database, 'ProductPlatformMappings') && !columnExists(database, 'ProductPlatformMappings', 'DetailID')) {
     database.run('ALTER TABLE ProductPlatformMappings ADD COLUMN DetailID TEXT')
   }
+
+  // Now create any missing tables/indexes/seeds (idempotent — IF NOT EXISTS).
+  database.exec(CREATE_TABLES_SQL)
   database.run(`PRAGMA user_version = ${SCHEMA_VERSION}`)
 }
 
