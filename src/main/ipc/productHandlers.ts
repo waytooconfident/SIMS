@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC } from '@shared/types'
 import type { InventoryService } from '../core/services/InventoryService'
-import type { CreateProductInput, UpdateProductInput, SellInput } from '@shared/types'
+import type { CreateProductInput, UpdateProductInput } from '@shared/types'
 
 export function registerProductHandlers(service: InventoryService): void {
   ipcMain.handle(IPC.PRODUCTS.GET_ALL, () => service.getAllProducts())
@@ -20,8 +20,6 @@ export function registerProductHandlers(service: InventoryService): void {
   ipcMain.handle(IPC.PRODUCTS.RECATEGORIZE, (_e, productID: string, categoryID: string) =>
     service.recategorizeProduct(productID, categoryID)
   )
-
-  ipcMain.handle(IPC.PRODUCTS.SELL, (_e, input: SellInput) => service.sellProduct(input))
 
   ipcMain.handle(IPC.PRODUCTS.REORDER, (_e, orderedIds: string[]) => { service.reorderProducts(orderedIds); return true })
 }

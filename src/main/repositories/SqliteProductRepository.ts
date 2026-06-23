@@ -1,19 +1,39 @@
+import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database/DatabaseManager'
 import { stmtAll, stmtGet, run, transaction } from '../database/sqlHelpers'
 import type { IProductRepository } from '../core/interfaces/IProductRepository'
-import type { Product, CreateProductInput, UpdateProductInput } from '@shared/types'
+import type { Product, ProductCost, CreateProductInput, UpdateProductInput, ProductCostInput } from '@shared/types'
+
+type ProductRow = Omit<Product, 'costs' | 'TotalCostNTD'>
 
 function pad4(n: number): string {
   return String(n).padStart(4, '0')
 }
 
 export class SqliteProductRepository implements IProductRepository {
+  // Attach a product's cost line-items + currency-converted NT$ total.
+  private hydrate(row: ProductRow): Product {
+    const costs = stmtAll<ProductCost>(
+      'SELECT * FROM ProductCosts WHERE ProductID = :id ORDER BY SortOrder ASC',
+      { ':id': row.ProductID }
+    )
+    const total = stmtGet<{ total: number }>(
+      `SELECT COALESCE(SUM(pc.Amount * COALESCE(cur.RateToTWD, 1)), 0) AS total
+       FROM ProductCosts pc LEFT JOIN Currencies cur ON cur.CurrencyCode = pc.CurrencyCode
+       WHERE pc.ProductID = :id`,
+      { ':id': row.ProductID }
+    )
+    return { ...row, costs, TotalCostNTD: total?.total ?? 0 }
+  }
+
   findAll(): Product[] {
-    return stmtAll('SELECT * FROM Products ORDER BY SortOrder ASC, ProductID ASC')
+    const rows = stmtAll<ProductRow>('SELECT * FROM Products ORDER BY SortOrder ASC, ProductID ASC')
+    return rows.map((r) => this.hydrate(r))
   }
 
   findById(productID: string): Product | undefined {
-    return stmtGet('SELECT * FROM Products WHERE ProductID = :id', { ':id': productID })
+    const row = stmtGet<ProductRow>('SELECT * FROM Products WHERE ProductID = :id', { ':id': productID })
+    return row ? this.hydrate(row) : undefined
   }
 
   /** ProductID = 3-digit category + 4-digit sequence, e.g. "0010001". */
@@ -34,44 +54,46 @@ export class SqliteProductRepository implements IProductRepository {
     return (row?.maxOrder ?? -1) + 1
   }
 
+  private insertCosts(productID: string, costs: ProductCostInput[]): void {
+    const db = getDb()
+    costs.forEach((c, i) => {
+      db.run(
+        `INSERT INTO ProductCosts (CostID, ProductID, CostName, Amount, CurrencyCode, SortOrder)
+         VALUES (:id, :pid, :name, :amt, :cur, :sort)`,
+        { ':id': uuidv4(), ':pid': productID, ':name': c.CostName ?? '', ':amt': c.Amount ?? 0, ':cur': c.CurrencyCode || 'TWD', ':sort': i } as never
+      )
+    })
+  }
+
   create(input: CreateProductInput): Product {
     const now = new Date().toISOString()
     const categoryID = (input.CategoryID || '000').padStart(3, '0')
-    const record: Product = {
-      ProductID: this.nextProductID(categoryID),
-      CategoryID: categoryID,
-      ImageKey: input.ImageKey ?? null,
-      ImagePath: input.ImagePath ?? null,
-      Cost_RMB: input.Cost_RMB ?? 0,
-      CompetitorPrice: input.CompetitorPrice ?? null,
-      StockQuantity: input.StockQuantity ?? 0,
-      LocalFolderPath: input.LocalFolderPath ?? null,
-      SortOrder: this.nextSortOrder(),
-      CreatedAt: now,
-      UpdatedAt: now
-    }
-    run(
-      `INSERT INTO Products
-         (ProductID, CategoryID, ImageKey, ImagePath, Cost_RMB, CompetitorPrice,
-          StockQuantity, LocalFolderPath, SortOrder, CreatedAt, UpdatedAt)
-       VALUES
-         (:ProductID, :CategoryID, :ImageKey, :ImagePath, :Cost_RMB, :CompetitorPrice,
-          :StockQuantity, :LocalFolderPath, :SortOrder, :CreatedAt, :UpdatedAt)`,
-      {
-        ':ProductID': record.ProductID,
-        ':CategoryID': record.CategoryID,
-        ':ImageKey': record.ImageKey,
-        ':ImagePath': record.ImagePath,
-        ':Cost_RMB': record.Cost_RMB,
-        ':CompetitorPrice': record.CompetitorPrice,
-        ':StockQuantity': record.StockQuantity,
-        ':LocalFolderPath': record.LocalFolderPath,
-        ':SortOrder': record.SortOrder,
-        ':CreatedAt': record.CreatedAt,
-        ':UpdatedAt': record.UpdatedAt
-      }
-    )
-    return record
+    const productID = this.nextProductID(categoryID)
+    const sortOrder = this.nextSortOrder()
+    const db = getDb()
+    transaction(() => {
+      db.run(
+        `INSERT INTO Products
+           (ProductID, CategoryID, ImageKey, ImagePath,
+            StockQuantity, LocalFolderPath, SortOrder, CreatedAt, UpdatedAt)
+         VALUES
+           (:ProductID, :CategoryID, :ImageKey, :ImagePath,
+            :StockQuantity, :LocalFolderPath, :SortOrder, :CreatedAt, :UpdatedAt)`,
+        {
+          ':ProductID': productID,
+          ':CategoryID': categoryID,
+          ':ImageKey': input.ImageKey ?? null,
+          ':ImagePath': input.ImagePath ?? null,
+          ':StockQuantity': input.StockQuantity ?? 0,
+          ':LocalFolderPath': input.LocalFolderPath ?? null,
+          ':SortOrder': sortOrder,
+          ':CreatedAt': now,
+          ':UpdatedAt': now
+        } as never
+      )
+      this.insertCosts(productID, input.costs ?? [])
+    })
+    return this.findById(productID)!
   }
 
   /** Persist a new manual ordering: SortOrder = index in the given ID list. */
@@ -84,32 +106,36 @@ export class SqliteProductRepository implements IProductRepository {
   }
 
   update(productID: string, input: UpdateProductInput): Product | undefined {
-    const existing = this.findById(productID)
+    const existing = stmtGet<ProductRow>('SELECT * FROM Products WHERE ProductID = :id', { ':id': productID })
     if (!existing) return undefined
 
-    const updated: Product = { ...existing, ...input, UpdatedAt: new Date().toISOString() }
-    run(
-      `UPDATE Products SET
-         ImageKey        = :ImageKey,
-         ImagePath       = :ImagePath,
-         Cost_RMB        = :Cost_RMB,
-         CompetitorPrice = :CompetitorPrice,
-         StockQuantity   = :StockQuantity,
-         LocalFolderPath = :LocalFolderPath,
-         UpdatedAt       = :UpdatedAt
-       WHERE ProductID = :ProductID`,
-      {
-        ':ImageKey': updated.ImageKey,
-        ':ImagePath': updated.ImagePath,
-        ':Cost_RMB': updated.Cost_RMB,
-        ':CompetitorPrice': updated.CompetitorPrice,
-        ':StockQuantity': updated.StockQuantity,
-        ':LocalFolderPath': updated.LocalFolderPath,
-        ':UpdatedAt': updated.UpdatedAt,
-        ':ProductID': productID
+    const now = new Date().toISOString()
+    const merged = { ...existing, ...input }
+    const db = getDb()
+    transaction(() => {
+      db.run(
+        `UPDATE Products SET
+           ImageKey        = :ImageKey,
+           ImagePath       = :ImagePath,
+           StockQuantity   = :StockQuantity,
+           LocalFolderPath = :LocalFolderPath,
+           UpdatedAt       = :UpdatedAt
+         WHERE ProductID = :ProductID`,
+        {
+          ':ImageKey': merged.ImageKey,
+          ':ImagePath': merged.ImagePath,
+          ':StockQuantity': merged.StockQuantity,
+          ':LocalFolderPath': merged.LocalFolderPath,
+          ':UpdatedAt': now,
+          ':ProductID': productID
+        } as never
+      )
+      if (input.costs) {
+        db.run('DELETE FROM ProductCosts WHERE ProductID = :id', { ':id': productID } as never)
+        this.insertCosts(productID, input.costs)
       }
-    )
-    return updated
+    })
+    return this.findById(productID)
   }
 
   delete(productID: string): boolean {
@@ -118,15 +144,15 @@ export class SqliteProductRepository implements IProductRepository {
 
   /**
    * Re-key a product into a new category. The category is part of the PK, so we
-   * insert a clone under a freshly-generated ID, re-point its mappings, then drop
-   * the old row — all in one transaction so the user never sees a broken state.
+   * insert a clone under a freshly-generated ID, re-point its children (mappings,
+   * details, costs), then drop the old row — all in one transaction.
    */
   recategorize(productID: string, newCategoryID: string): Product {
-    const existing = this.findById(productID)
+    const existing = stmtGet<ProductRow>('SELECT * FROM Products WHERE ProductID = :id', { ':id': productID })
     if (!existing) throw new Error(`商品「${productID}」不存在。`)
 
     const cat = (newCategoryID || '000').padStart(3, '0')
-    if (existing.CategoryID === cat) return existing // no-op
+    if (existing.CategoryID === cat) return this.hydrate(existing) // no-op
 
     const newID = this.nextProductID(cat)
     const now = new Date().toISOString()
@@ -135,18 +161,16 @@ export class SqliteProductRepository implements IProductRepository {
     transaction(() => {
       db.run(
         `INSERT INTO Products
-           (ProductID, CategoryID, ImageKey, ImagePath, Cost_RMB, CompetitorPrice,
+           (ProductID, CategoryID, ImageKey, ImagePath,
             StockQuantity, LocalFolderPath, SortOrder, CreatedAt, UpdatedAt)
          VALUES
-           (:ProductID, :CategoryID, :ImageKey, :ImagePath, :Cost_RMB, :CompetitorPrice,
+           (:ProductID, :CategoryID, :ImageKey, :ImagePath,
             :StockQuantity, :LocalFolderPath, :SortOrder, :CreatedAt, :UpdatedAt)`,
         {
           ':ProductID': newID,
           ':CategoryID': cat,
           ':ImageKey': existing.ImageKey,
           ':ImagePath': existing.ImagePath,
-          ':Cost_RMB': existing.Cost_RMB,
-          ':CompetitorPrice': existing.CompetitorPrice,
           ':StockQuantity': existing.StockQuantity,
           ':LocalFolderPath': existing.LocalFolderPath,
           ':SortOrder': existing.SortOrder,
@@ -154,15 +178,14 @@ export class SqliteProductRepository implements IProductRepository {
           ':UpdatedAt': now
         } as never
       )
-      // Re-point mappings to the new ID BEFORE deleting the old row so the
+      // Re-point children to the new ID BEFORE deleting the old row so the
       // ON DELETE CASCADE doesn't take them with it.
-      db.run('UPDATE ProductPlatformMappings SET ProductID = :new WHERE ProductID = :old', {
-        ':new': newID,
-        ':old': productID
-      } as never)
+      db.run('UPDATE ProductPlatformMappings SET ProductID = :new WHERE ProductID = :old', { ':new': newID, ':old': productID } as never)
+      db.run('UPDATE ProductDetails SET ProductID = :new WHERE ProductID = :old', { ':new': newID, ':old': productID } as never)
+      db.run('UPDATE ProductCosts SET ProductID = :new WHERE ProductID = :old', { ':new': newID, ':old': productID } as never)
       db.run('DELETE FROM Products WHERE ProductID = :old', { ':old': productID } as never)
     })
 
-    return { ...existing, ProductID: newID, CategoryID: cat, UpdatedAt: now }
+    return this.findById(newID)!
   }
 }

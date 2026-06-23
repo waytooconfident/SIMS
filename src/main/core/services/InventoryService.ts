@@ -18,8 +18,7 @@ import type {
   CreateCategoryInput,
   UpdateCategoryInput,
   CreateMappingInput,
-  UpdateMappingInput,
-  SellInput
+  UpdateMappingInput
 } from '@shared/types'
 
 // InventoryService coordinates CRUD across the repositories.
@@ -174,11 +173,18 @@ export class InventoryService {
 
   // ─── Mappings ──────────────────────────────────────────────────────────────
 
+  // Bind a product to a platform: creates/updates a listing row (OrderID NULL).
+  // Sales are recorded separately as orders.
   createMapping(input: CreateMappingInput): ProductPlatformMapping {
     if (!this.products.findById(input.ProductID)) throw new Error(`商品「${input.ProductID}」不存在。`)
     if (!this.platforms.findById(input.PlatformID)) throw new Error(`平台「${input.PlatformID}」不存在。`)
-    // Same day + product + platform records are merged into one (per spec).
-    return this.mappings.createOrMergeDaily(input)
+    return this.mappings.createOrUpdateListing(
+      input.ProductID, input.PlatformID, input.PlatformTitle, input.PlatformDescription, input.SellingPrice ?? 0, input.CompetitorPrice ?? null
+    )
+  }
+
+  getListings(): (ProductPlatformMapping & { PlatformName: string })[] {
+    return this.mappings.findListings()
   }
 
   /** Edit the title/description of a product's listing on one platform (bulk). */
@@ -194,55 +200,5 @@ export class InventoryService {
 
   deleteMapping(mappingID: string): void {
     if (!this.mappings.delete(mappingID)) throw new Error(`紀錄「${mappingID}」不存在。`)
-  }
-
-  // ─── Sell (record a sale) ────────────────────────────────────────────────────
-  // Appends a dated sales record on the chosen platform and decrements stock.
-  // Returns the refreshed product so the UI can update the stock badge.
-  sellProduct(input: SellInput): { product: Product; mappings: ProductPlatformMapping[] } {
-    const product = this.products.findById(input.productID)
-    if (!product) throw new Error(`商品「${input.productID}」不存在。`)
-    if (!this.platforms.findById(input.platformID)) throw new Error(`平台「${input.platformID}」不存在。`)
-    const date = input.date || new Date().toISOString()
-
-    // Detail-level sale: one record per selected variant (sold together), each
-    // tagged with its DetailID. Stock is decremented on the detail, not the product.
-    if (input.details && input.details.length > 0) {
-      const created: ProductPlatformMapping[] = []
-      for (const d of input.details) {
-        if (d.quantity <= 0) continue
-        const m = this.mappings.createOrMergeDaily({
-          ProductID: input.productID,
-          PlatformID: input.platformID,
-          DetailID: d.detailID,
-          DateRecorded: date,
-          PlatformTitle: '-',
-          PlatformDescription: '-',
-          SellingPrice: d.sellingPrice ?? 0,
-          SalesVolume: d.quantity
-        })
-        this.details.decrementStock(d.detailID, d.quantity)
-        created.push(m)
-      }
-      if (created.length === 0) throw new Error('請至少選擇一個細項並填入賣出數量。')
-      return { product: this.products.findById(input.productID)!, mappings: created }
-    }
-
-    // Product-level sale (product has no details).
-    const qty = input.quantity ?? 0
-    if (qty <= 0) throw new Error('賣出數量需大於 0。')
-    const mapping = this.mappings.createOrMergeDaily({
-      ProductID: input.productID,
-      PlatformID: input.platformID,
-      DetailID: null,
-      DateRecorded: date,
-      PlatformTitle: '-',
-      PlatformDescription: '-',
-      SellingPrice: input.sellingPrice ?? 0,
-      SalesVolume: qty
-    })
-    const newStock = Math.max(0, product.StockQuantity - qty)
-    const updated = this.products.update(input.productID, { StockQuantity: newStock })!
-    return { product: updated, mappings: [mapping] }
   }
 }

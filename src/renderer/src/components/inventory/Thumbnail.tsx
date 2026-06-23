@@ -21,7 +21,9 @@ export function Thumbnail({ path, size = 40 }: ThumbnailProps) {
     return () => { alive = false }
   }, [path])
 
-  const box = { width: size, height: size }
+  // Fixed min+max dimensions so the table cell can't squeeze the image when the
+  // window narrows (the table scrolls horizontally instead).
+  const box = { width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size }
 
   if (!url) {
     return (

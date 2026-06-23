@@ -42,6 +42,10 @@ export class SalesAnalyticsService {
     return this.mappings.getChartData(filter)
   }
 
+  getOrderExtraCostTotal(filter: AnalyticsFilter): number {
+    return this.mappings.getOrderExtraCostTotal(filter)
+  }
+
   /** Aggregate totals across all rows for a dashboard overview. */
   getOverallTotals(summaries: AnalyticsSummary[]) {
     const totalEarnings = summaries.reduce((s, r) => s + r.TotalEarnings, 0)

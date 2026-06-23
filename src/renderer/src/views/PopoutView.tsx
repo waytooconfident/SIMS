@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { usePlatforms } from '../hooks/usePlatforms'
 import { useProducts } from '../hooks/useProducts'
 import { useCategories } from '../hooks/useCategories'
-import { useExchangeRateStore } from '../stores/useExchangeRateStore'
 import { ComparePanel } from '../components/analytics/ComparePanel'
 import type { TimePreset } from '@shared/types'
 
@@ -26,10 +25,8 @@ export function PopoutView() {
   const { platforms, load: loadPlatforms } = usePlatforms()
   const { products, load: loadProducts } = useProducts()
   const { categories, load: loadCategories } = useCategories()
-  const rate = useExchangeRateStore((s) => s.rate)
-  const loadRate = useExchangeRateStore((s) => s.loadRate)
 
-  useEffect(() => { loadPlatforms(); loadProducts(); loadCategories(); loadRate() }, [])
+  useEffect(() => { loadPlatforms(); loadProducts(); loadCategories() }, [])
 
   return (
     <div className="h-screen overflow-y-auto bg-gray-50 p-5">
@@ -38,7 +35,6 @@ export function PopoutView() {
         platforms={platforms}
         products={products}
         categories={categories}
-        exchangeRate={rate}
         embedded
         initial={{ platformID: init.platformID, productID: init.productID, categoryID: init.categoryID, time: init.time }}
       />

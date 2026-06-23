@@ -18,7 +18,8 @@ import type {
   CreateMappingInput,
   UpdateMappingInput,
   AnalyticsFilter,
-  SellInput
+  CreateOrderInput,
+  UpdateOrderInput
 } from '@shared/types'
 
 // Expose a typed `window.api` to the renderer.
@@ -68,7 +69,6 @@ const api = {
     delete: (productID: string) => ipcRenderer.invoke(IPC.PRODUCTS.DELETE, productID),
     recategorize: (productID: string, categoryID: string) =>
       ipcRenderer.invoke(IPC.PRODUCTS.RECATEGORIZE, productID, categoryID),
-    sell: (input: SellInput) => ipcRenderer.invoke(IPC.PRODUCTS.SELL, input),
     reorder: (orderedIds: string[]) => ipcRenderer.invoke(IPC.PRODUCTS.REORDER, orderedIds)
   },
 
@@ -90,6 +90,7 @@ const api = {
 
   mappings: {
     getAll: (filter: AnalyticsFilter) => ipcRenderer.invoke(IPC.MAPPINGS.GET_ALL, filter),
+    getListings: () => ipcRenderer.invoke(IPC.MAPPINGS.GET_LISTINGS),
     create: (input: CreateMappingInput) => ipcRenderer.invoke(IPC.MAPPINGS.CREATE, input),
     update: (mappingID: string, input: UpdateMappingInput) =>
       ipcRenderer.invoke(IPC.MAPPINGS.UPDATE, mappingID, input),
@@ -99,7 +100,16 @@ const api = {
     deleteListing: (productID: string, platformID: string) =>
       ipcRenderer.invoke(IPC.MAPPINGS.DELETE_LISTING, productID, platformID),
     getAnalytics: (filter: AnalyticsFilter) => ipcRenderer.invoke(IPC.MAPPINGS.GET_ANALYTICS, filter),
-    getChartData: (filter: AnalyticsFilter) => ipcRenderer.invoke(IPC.MAPPINGS.GET_CHART_DATA, filter)
+    getChartData: (filter: AnalyticsFilter) => ipcRenderer.invoke(IPC.MAPPINGS.GET_CHART_DATA, filter),
+    getOrderCostTotal: (filter: AnalyticsFilter): Promise<number> =>
+      ipcRenderer.invoke(IPC.MAPPINGS.GET_ORDER_COST_TOTAL, filter)
+  },
+
+  orders: {
+    getAll: (filter: AnalyticsFilter) => ipcRenderer.invoke(IPC.ORDERS.GET_ALL, filter),
+    create: (input: CreateOrderInput) => ipcRenderer.invoke(IPC.ORDERS.CREATE, input),
+    update: (orderID: string, input: UpdateOrderInput) => ipcRenderer.invoke(IPC.ORDERS.UPDATE, orderID, input),
+    delete: (orderID: string) => ipcRenderer.invoke(IPC.ORDERS.DELETE, orderID)
   },
 
   settings: {

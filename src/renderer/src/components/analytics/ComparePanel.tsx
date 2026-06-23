@@ -27,13 +27,12 @@ interface ComparePanelProps {
   platforms: Platform[]
   products: Product[]
   categories: Category[]
-  exchangeRate: number
   onRemove?: () => void
   embedded?: boolean   // inside a pop-out window: hide remove/pop-out
   initial?: { platformID: string | null; productID: string | null; categoryID: string | null; time: TimePreset }
 }
 
-export function ComparePanel({ label, platforms, products, categories, exchangeRate, onRemove, embedded, initial }: ComparePanelProps) {
+export function ComparePanel({ label, platforms, products, categories, onRemove, embedded, initial }: ComparePanelProps) {
   const { chartData, loading, overallTotals, loadMappings } = useMappings()
   const [platformID, setPlatformID] = useState<string | null>(initial?.platformID ?? null)
   const [productID, setProductID] = useState<string | null>(initial?.productID ?? null)
@@ -43,8 +42,8 @@ export function ComparePanel({ label, platforms, products, categories, exchangeR
 
   const range = dateRange(time)
   useEffect(() => {
-    loadMappings({ platformID, productID, categoryID, startDate: range.startDate, endDate: range.endDate, exchangeRate })
-  }, [platformID, productID, categoryID, time, exchangeRate, loadMappings])
+    loadMappings({ platformID, productID, categoryID, startDate: range.startDate, endDate: range.endDate })
+  }, [platformID, productID, categoryID, time, loadMappings])
 
   const popOut = () =>
     window.api.window.openCompare({ platformID, productID, categoryID, time, label, mode })

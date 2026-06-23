@@ -16,6 +16,8 @@ export function registerMappingHandlers(
     analyticsService.getMappingsWithCalc(filter)
   )
 
+  ipcMain.handle(IPC.MAPPINGS.GET_LISTINGS, () => inventoryService.getListings())
+
   ipcMain.handle(IPC.MAPPINGS.CREATE, (_e, input: CreateMappingInput) =>
     inventoryService.createMapping(input)
   )
@@ -48,5 +50,9 @@ export function registerMappingHandlers(
 
   ipcMain.handle(IPC.MAPPINGS.GET_CHART_DATA, (_e, filter: AnalyticsFilter) =>
     analyticsService.getChartData(filter)
+  )
+
+  ipcMain.handle(IPC.MAPPINGS.GET_ORDER_COST_TOTAL, (_e, filter: AnalyticsFilter) =>
+    analyticsService.getOrderExtraCostTotal(filter)
   )
 }

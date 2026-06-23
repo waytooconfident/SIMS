@@ -12,7 +12,7 @@ interface FilterState {
   setProductID: (id: string | null) => void
   setDetail: (productID: string, detailID: string) => void
   setCategoryID: (id: string | null) => void
-  buildFilter: (exchangeRate: number) => AnalyticsFilter
+  buildFilter: () => AnalyticsFilter
 }
 
 function dateRangeForPreset(preset: TimePreset): { startDate: string; endDate: string } {
@@ -49,9 +49,9 @@ export const useFilterStore = create<FilterState>((set, get) => ({
   setDetail: (productID, detailID) => set({ productID, detailID, categoryID: null }),
   setCategoryID: (id) => set({ categoryID: id, productID: id ? null : get().productID, detailID: null }),
 
-  buildFilter: (exchangeRate: number): AnalyticsFilter => {
+  buildFilter: (): AnalyticsFilter => {
     const { timePreset, platformID, productID, detailID, categoryID } = get()
     const { startDate, endDate } = dateRangeForPreset(timePreset)
-    return { platformID, productID, detailID, categoryID, startDate, endDate, exchangeRate }
+    return { platformID, productID, detailID, categoryID, startDate, endDate }
   }
 }))

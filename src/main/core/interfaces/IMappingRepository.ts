@@ -13,15 +13,18 @@ export interface IMappingRepository {
   findById(mappingID: string): ProductPlatformMapping | undefined
   reassignProduct(oldProductID: string, newProductID: string): void
   create(input: CreateMappingInput): ProductPlatformMapping
-  /** Create, OR if a record already exists for the same product+platform+day,
-   *  merge into it (sum volume, volume-weighted average price). */
-  createOrMergeDaily(input: CreateMappingInput): ProductPlatformMapping
+  /** All listing rows (OrderID NULL) joined with platform name. */
+  findListings(): (ProductPlatformMapping & { PlatformName: string })[]
+  /** Create or update a product×platform listing (OrderID NULL). */
+  createOrUpdateListing(productID: string, platformID: string, title: string, description: string, price: number, competitorPrice: number | null): ProductPlatformMapping
   update(mappingID: string, input: UpdateMappingInput): ProductPlatformMapping | undefined
-  /** Bulk-set title/description for every record of a product on a platform. */
+  /** Set title/description for a product's listing on a platform. */
   updateListing(productID: string, platformID: string, title: string, description: string): void
-  /** Remove ALL records of a product on a platform (un-list it). Returns count removed. */
+  /** Remove a product's listing on a platform (un-list it). Returns count removed. */
   deleteListing(productID: string, platformID: string): number
   delete(mappingID: string): boolean
   getAnalyticsSummary(filter: AnalyticsFilter): AnalyticsSummary[]
   getChartData(filter: AnalyticsFilter): ChartDataPoint[]
+  /** Σ of order-level extra costs (currency-converted) in the filter's range. */
+  getOrderExtraCostTotal(filter: AnalyticsFilter): number
 }

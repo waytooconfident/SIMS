@@ -82,31 +82,35 @@ export function closeDb(): void {
 // ─── Schema migration (structural, version-agnostic) ───────────────────────────
 
 function migrate(database: SqlJsDb): void {
-  // Legacy pre-rework DB (ImageKey PK, Products without CategoryID) → reset.
-  if (tableExists(database, 'Products') && !columnExists(database, 'Products', 'CategoryID')) {
+  const version = userVersion(database)
+
+  // v7 is a DESTRUCTIVE schema rework (cost line-items + order model). Any older
+  // DB that already has data is reset: drop the restructured tables (Currencies &
+  // Settings are preserved by DROP_RESTRUCTURED_SQL) and rebuild from scratch.
+  // A fresh DB has version 0 with no tables, so nothing is dropped.
+  if (version > 0 && version < 7 && tableExists(database, 'Products')) {
     database.exec(DROP_RESTRUCTURED_SQL)
   }
 
-  // IMPORTANT: add any missing columns on EXISTING tables BEFORE running the
-  // schema script, because CREATE_TABLES_SQL builds indexes that reference these
-  // columns (e.g. idx_mappings_detailid on DetailID). On a fresh DB these tables
-  // don't exist yet, so the guards skip and the columns arrive via CREATE TABLE.
-  // v2 → v3: add FeeType to a PlatformFees table that predates it.
-  if (tableExists(database, 'PlatformFees') && !columnExists(database, 'PlatformFees', 'FeeType')) {
-    database.run("ALTER TABLE PlatformFees ADD COLUMN FeeType TEXT NOT NULL DEFAULT 'percent'")
-  }
-  // v3 → v4: add SortOrder to Products for manual drag-reordering.
-  if (tableExists(database, 'Products') && !columnExists(database, 'Products', 'SortOrder')) {
-    database.run('ALTER TABLE Products ADD COLUMN SortOrder INTEGER NOT NULL DEFAULT 0')
-  }
-  // v5 → v6: add DetailID to mappings so sales can be tracked per variant.
-  if (tableExists(database, 'ProductPlatformMappings') && !columnExists(database, 'ProductPlatformMappings', 'DetailID')) {
-    database.run('ALTER TABLE ProductPlatformMappings ADD COLUMN DetailID TEXT')
+  // v7 → v8: CompetitorPrice moved onto the listing row (per-platform). Add the
+  // column non-destructively before CREATE_TABLES (which indexes/seeds reference).
+  if (tableExists(database, 'ProductPlatformMappings') && !columnExists(database, 'ProductPlatformMappings', 'CompetitorPrice')) {
+    database.run('ALTER TABLE ProductPlatformMappings ADD COLUMN CompetitorPrice REAL')
   }
 
-  // Now create any missing tables/indexes/seeds (idempotent — IF NOT EXISTS).
+  // Create any missing tables/indexes/seeds (idempotent — IF NOT EXISTS).
   database.exec(CREATE_TABLES_SQL)
   database.run(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+}
+
+function userVersion(database: SqlJsDb): number {
+  const res = database.exec('PRAGMA user_version') as { values?: unknown[][] }[]
+  return Number(res?.[0]?.values?.[0]?.[0] ?? 0)
+}
+
+function columnExists(database: SqlJsDb, table: string, column: string): boolean {
+  const res = database.exec(`PRAGMA table_info(${table})`) as { values?: unknown[][] }[]
+  return (res?.[0]?.values ?? []).some((r) => r[1] === column)
 }
 
 function tableExists(database: SqlJsDb, name: string): boolean {
@@ -114,9 +118,4 @@ function tableExists(database: SqlJsDb, name: string): boolean {
     values?: unknown[][]
   }[]
   return (res?.[0]?.values?.length ?? 0) > 0
-}
-
-function columnExists(database: SqlJsDb, table: string, column: string): boolean {
-  const res = database.exec(`PRAGMA table_info(${table})`) as { values?: unknown[][] }[]
-  return (res?.[0]?.values ?? []).some((r) => r[1] === column)
 }

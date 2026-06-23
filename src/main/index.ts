@@ -11,11 +11,14 @@ import { SqlitePlatformFeeRepository } from './repositories/SqlitePlatformFeeRep
 import { SqliteMappingRepository } from './repositories/SqliteMappingRepository'
 import { SqliteCategoryRepository } from './repositories/SqliteCategoryRepository'
 import { SqliteDetailRepository } from './repositories/SqliteDetailRepository'
+import { SqliteOrderRepository } from './repositories/SqliteOrderRepository'
 import { InventoryService } from './core/services/InventoryService'
 import { SalesAnalyticsService } from './core/services/SalesAnalyticsService'
+import { OrderService } from './core/services/OrderService'
 import { registerProductHandlers } from './ipc/productHandlers'
 import { registerPlatformHandlers } from './ipc/platformHandlers'
 import { registerMappingHandlers } from './ipc/mappingHandlers'
+import { registerOrderHandlers } from './ipc/orderHandlers'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerCategoryHandlers } from './ipc/categoryHandlers'
 import { registerCurrencyHandlers } from './ipc/currencyHandlers'
@@ -37,6 +40,7 @@ async function bootstrap(): Promise<void> {
   const mappingRepo     = new SqliteMappingRepository()
   const categoryRepo    = new SqliteCategoryRepository()
   const detailRepo      = new SqliteDetailRepository()
+  const orderRepo       = new SqliteOrderRepository()
 
   const inventoryService = new InventoryService(
     productRepo,
@@ -47,6 +51,7 @@ async function bootstrap(): Promise<void> {
     detailRepo
   )
   const analyticsService = new SalesAnalyticsService(mappingRepo)
+  const orderService = new OrderService(orderRepo, productRepo, platformRepo)
 
   registerAuthHandlers()
   registerCategoryHandlers(inventoryService)
@@ -55,6 +60,7 @@ async function bootstrap(): Promise<void> {
   registerProductHandlers(inventoryService)
   registerPlatformHandlers(inventoryService)
   registerMappingHandlers(inventoryService, analyticsService)
+  registerOrderHandlers(orderService)
   registerSettingsHandlers()
   registerSystemHandlers()
   registerWindowHandlers()

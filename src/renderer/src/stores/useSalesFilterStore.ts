@@ -15,7 +15,7 @@ interface SalesFilterState {
   setCategoryID: (id: string | null) => void
   /** Apply a whole filter at once (used by the inventory shortcut). */
   applyFrom: (f: { productID?: string | null; platformID?: string | null; categoryID?: string | null }) => void
-  buildFilter: (exchangeRate: number) => AnalyticsFilter
+  buildFilter: () => AnalyticsFilter
 }
 
 function rangeFor(preset: TimePreset): { startDate: string; endDate: string } {
@@ -49,9 +49,9 @@ export const useSalesFilterStore = create<SalesFilterState>((set, get) => ({
     categoryID: f.categoryID ?? null
   }),
 
-  buildFilter: (exchangeRate) => {
+  buildFilter: () => {
     const { timePreset, platformID, productID, categoryID } = get()
     const { startDate, endDate } = rangeFor(timePreset)
-    return { platformID, productID, categoryID, startDate, endDate, exchangeRate }
+    return { platformID, productID, categoryID, startDate, endDate }
   }
 }))
