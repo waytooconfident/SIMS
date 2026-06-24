@@ -139,7 +139,35 @@ const api = {
       time: string
       label: string
       mode?: string
-    }): Promise<number> => ipcRenderer.invoke(IPC.WINDOW.OPEN_COMPARE, payload)
+    }): Promise<number> => ipcRenderer.invoke(IPC.WINDOW.OPEN_COMPARE, payload),
+
+    // Open (or focus) the independent "新增銷售紀錄" OS window, optionally pre-adding a product.
+    openOrder: (prefillProductID?: string | null): Promise<void> =>
+      ipcRenderer.invoke(IPC.WINDOW.OPEN_ORDER, prefillProductID ?? null),
+
+    // Custom cross-window drag: the main process hit-tests cursor screen coords
+    // against the order window's bounds (HTML5 DnD cannot cross OS windows).
+    dragBegin: (productID: string): void => ipcRenderer.send(IPC.WINDOW.DRAG_BEGIN, productID),
+    dragMove: (x: number, y: number): void => ipcRenderer.send(IPC.WINDOW.DRAG_MOVE, x, y),
+    dragEnd: (x: number, y: number): void => ipcRenderer.send(IPC.WINDOW.DRAG_END, x, y),
+
+    // Order-window-side listeners. Each returns an unsubscribe function.
+    onOrderAddProduct: (cb: (productID: string) => void): (() => void) => {
+      const fn = (_e: unknown, productID: string): void => cb(productID)
+      ipcRenderer.on(IPC.WINDOW.ORDER_ADD_PRODUCT, fn)
+      return () => ipcRenderer.removeListener(IPC.WINDOW.ORDER_ADD_PRODUCT, fn)
+    },
+    onOrderHover: (cb: (hover: boolean) => void): (() => void) => {
+      const fn = (_e: unknown, hover: boolean): void => cb(hover)
+      ipcRenderer.on(IPC.WINDOW.ORDER_HOVER, fn)
+      return () => ipcRenderer.removeListener(IPC.WINDOW.ORDER_HOVER, fn)
+    },
+    // Fired in every window after any order is created/updated/deleted anywhere.
+    onOrdersChanged: (cb: () => void): (() => void) => {
+      const fn = (): void => cb()
+      ipcRenderer.on(IPC.WINDOW.ORDERS_CHANGED, fn)
+      return () => ipcRenderer.removeListener(IPC.WINDOW.ORDERS_CHANGED, fn)
+    }
   }
 }
 

@@ -340,7 +340,14 @@ export const IPC = {
     GET_DATA_URL: 'images:getDataUrl'
   },
   WINDOW: {
-    OPEN_COMPARE: 'window:openCompare'
+    OPEN_COMPARE: 'window:openCompare',
+    OPEN_ORDER: 'window:openOrder',
+    DRAG_BEGIN: 'window:dragBegin',
+    DRAG_MOVE: 'window:dragMove',
+    DRAG_END: 'window:dragEnd',
+    ORDER_ADD_PRODUCT: 'window:orderAddProduct',
+    ORDER_HOVER: 'window:orderHover',
+    ORDERS_CHANGED: 'window:ordersChanged'
   }
 } as const
 

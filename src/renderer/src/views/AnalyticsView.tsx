@@ -145,7 +145,7 @@ export function AnalyticsView() {
                   <SortHeader field="sales" label="銷售量" />
                   <SortHeader field="price" label="平均售價" />
                   <SortHeader field="earnings" label="總收益" />
-                  <SortHeader field="margin" label="淨利率(對成本)" />
+                  <SortHeader field="margin" label="淨利率(利潤/成本)" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

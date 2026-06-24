@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, ShoppingCart } from 'lucide-react'
 import { useProducts } from '../hooks/useProducts'
 import { usePlatforms } from '../hooks/usePlatforms'
 import { useMappings } from '../hooks/useMappings'
 import { useCategories } from '../hooks/useCategories'
 import { useDetails } from '../hooks/useDetails'
-import { useOrders } from '../hooks/useOrders'
 import { useFilterStore } from '../stores/useFilterStore'
 import { useSalesFilterStore } from '../stores/useSalesFilterStore'
+import { useDataVersion } from '../stores/useDataVersion'
 import { InventoryTable, type InventorySize } from '../components/inventory/InventoryTable'
 import { ProductFormModal, type ProductListing } from '../components/inventory/ProductFormModal'
-import { OrderFormModal } from '../components/inventory/OrderFormModal'
 import type { Product, ProductPlatformMapping } from '@shared/types'
 import type { ActiveView } from '../App'
 
@@ -25,24 +24,25 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
   const { platforms, load: loadPlatforms } = usePlatforms()
   const { categories, load: loadCategories, nameOf } = useCategories()
   const { mappings, loadMappings } = useMappings()
-  const { byProduct: detailsByProduct, details, load: loadDetails } = useDetails()
-  const { create: createOrder } = useOrders()
+  const { byProduct: detailsByProduct, load: loadDetails } = useDetails()
   const [listings, setListings] = useState<Listing[]>([])
   const setFilterProduct = useFilterStore((s) => s.setProductID)
   const applySalesFilter = useSalesFilterStore((s) => s.applyFrom)
+  const dataVersion = useDataVersion((s) => s.version)
 
   const [search, setSearch] = useState('')
   const [platformFilter, setPlatformFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [size, setSize] = useState<InventorySize>('sm')
   const [productModal, setProductModal] = useState<{ open: boolean; target?: Product }>({ open: false })
-  const [sellModal, setSellModal] = useState<{ open: boolean; prefill?: string }>({ open: false })
 
   const refreshMappings = useCallback(() =>
     loadMappings({ platformID: null, startDate: '1970-01-01T00:00:00.000Z', endDate: new Date().toISOString() }), [loadMappings])
   const refreshListings = useCallback(async () => { setListings(await window.api.mappings.getListings()) }, [])
 
   useEffect(() => { loadProducts(); loadPlatforms(); loadCategories(); loadDetails(); refreshMappings(); refreshListings() }, [])
+  // Reload after a sale is recorded from the global order panel (stock changed).
+  useEffect(() => { if (dataVersion) { loadProducts(); loadDetails(); refreshMappings() } }, [dataVersion])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search matches: product ID, image filename, category name, detail names, OR a listing title.
   const filteredProducts = products.filter((p) => {
@@ -87,14 +87,6 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
     refreshMappings(); refreshListings()
   }
 
-  // Quick-sell: open the new-order form as a popup right here, so the inventory
-  // page stays visible/usable behind it. Pre-filled with this product.
-  const handleQuickSell = (productID: string) => setSellModal({ open: true, prefill: productID })
-  const handleQuickSellSubmit = async (input: Parameters<typeof createOrder>[0]) => {
-    await createOrder(input)
-    loadProducts(); loadDetails(); refreshMappings()  // stock changed
-  }
-
   // Jump to the Sales Records page filtered to this product (+ current filters).
   const handleViewSales = (productID: string) => {
     applySalesFilter({ productID, platformID: platformFilter || null, categoryID: categoryFilter || null })
@@ -134,7 +126,8 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           ))}
         </div>
 
-        <button onClick={() => setProductModal({ open: true })} className="btn-primary ml-auto"><Plus size={15} /> 新增商品</button>
+        <button onClick={() => window.api.window.openOrder()} className="btn-secondary ml-auto"><ShoppingCart size={15} /> 新增銷售紀錄</button>
+        <button onClick={() => setProductModal({ open: true })} className="btn-primary"><Plus size={15} /> 新增商品</button>
       </div>
 
       {initialLoading ? (
@@ -151,7 +144,7 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           onReorderDetails={async (orderedIds) => { await window.api.details.reorder(orderedIds); loadDetails() }}
           onEditProduct={(p) => setProductModal({ open: true, target: p })}
           onDeleteProduct={handleDeleteProduct}
-          onSellProduct={(p) => handleQuickSell(p.ProductID)}
+          onSellProduct={(p) => window.api.window.openOrder(p.ProductID)}
           onAnalyze={handleAnalyze}
           onViewSales={handleViewSales}
         />
@@ -165,18 +158,6 @@ export function InventoryView({ onNavigate }: { onNavigate: (v: ActiveView) => v
           productListings={targetListings}
           onClose={() => setProductModal({ open: false })}
           onSaved={handleProductSaved}
-        />
-      )}
-
-      {sellModal.open && (
-        <OrderFormModal
-          products={products}
-          platforms={platforms}
-          details={details}
-          categoryName={nameOf}
-          prefillProductID={sellModal.prefill}
-          onSubmit={handleQuickSellSubmit}
-          onClose={() => setSellModal({ open: false })}
         />
       )}
     </div>

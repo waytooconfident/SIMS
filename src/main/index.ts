@@ -98,6 +98,17 @@ function createWindow(hash = '', opts: Electron.BrowserWindowConstructorOptions 
   return win
 }
 
+// The single independent "新增銷售紀錄" window, plus the product currently being
+// dragged from a main window towards it.
+let orderWindow: BrowserWindow | null = null
+let dragProductID: string | null = null
+
+function isOverOrderWindow(x: number, y: number): boolean {
+  if (!orderWindow || orderWindow.isDestroyed() || !orderWindow.isVisible() || orderWindow.isMinimized()) return false
+  const b = orderWindow.getBounds()
+  return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
+}
+
 function registerWindowHandlers(): void {
   // Pop out a single comparison panel into its own window (dual-monitor use).
   ipcMain.handle(
@@ -116,6 +127,46 @@ function registerWindowHandlers(): void {
       title: `對比視窗 ${payload.label}`
     })
     return win.id
+  })
+
+  // Open (or focus) the independent order window. A real OS window can be moved
+  // outside the main window and survives the main window being minimised.
+  ipcMain.handle(IPC.WINDOW.OPEN_ORDER, (_e, prefillProductID: string | null) => {
+    if (orderWindow && !orderWindow.isDestroyed()) {
+      if (orderWindow.isMinimized()) orderWindow.restore()
+      orderWindow.show()
+      orderWindow.focus()
+      if (prefillProductID) orderWindow.webContents.send(IPC.WINDOW.ORDER_ADD_PRODUCT, prefillProductID)
+      return
+    }
+    const win = createWindow('order', {
+      width: 700, height: 880, minWidth: 460, minHeight: 560, title: '新增銷售紀錄'
+    })
+    orderWindow = win
+    win.on('closed', () => { if (orderWindow === win) orderWindow = null })
+    if (prefillProductID) {
+      win.webContents.once('did-finish-load', () => {
+        if (!win.isDestroyed()) win.webContents.send(IPC.WINDOW.ORDER_ADD_PRODUCT, prefillProductID)
+      })
+    }
+  })
+
+  // Custom cross-window product drag (HTML5 DnD cannot cross OS windows).
+  ipcMain.on(IPC.WINDOW.DRAG_BEGIN, (_e, productID: string) => { dragProductID = productID })
+  ipcMain.on(IPC.WINDOW.DRAG_MOVE, (_e, x: number, y: number) => {
+    if (!dragProductID || !orderWindow || orderWindow.isDestroyed()) return
+    orderWindow.webContents.send(IPC.WINDOW.ORDER_HOVER, isOverOrderWindow(x, y))
+  })
+  ipcMain.on(IPC.WINDOW.DRAG_END, (_e, x: number, y: number) => {
+    const pid = dragProductID
+    dragProductID = null
+    if (!orderWindow || orderWindow.isDestroyed()) return
+    orderWindow.webContents.send(IPC.WINDOW.ORDER_HOVER, false)
+    if (pid && isOverOrderWindow(x, y)) {
+      orderWindow.show()
+      orderWindow.focus()
+      orderWindow.webContents.send(IPC.WINDOW.ORDER_ADD_PRODUCT, pid)
+    }
   })
 }
 

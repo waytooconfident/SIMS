@@ -20,6 +20,9 @@ interface Props {
   details: ProductDetail[]
   categoryName: (id: string) => string
   prefillProductID?: string | null
+  // When true the form fills a dedicated OS window: no drag/positioning, products
+  // arrive via cross-window IPC, and a successful save keeps the window open.
+  windowMode?: boolean
   onSubmit: (input: CreateOrderInput) => Promise<void>
   onClose: () => void
 }
@@ -27,7 +30,7 @@ interface Props {
 let rowSeq = 0
 const newKey = () => `r${rowSeq++}`
 
-export function OrderFormModal({ order, products, platforms, details, categoryName, prefillProductID, onSubmit, onClose }: Props) {
+export function OrderFormModal({ order, products, platforms, details, categoryName, prefillProductID, windowMode, onSubmit, onClose }: Props) {
   const isEdit = !!order
   const { currencies, load: loadCurrencies } = useCurrencies()
   const [platformID, setPlatformID] = useState(order?.PlatformID ?? platforms[0]?.PlatformID ?? '')
@@ -39,9 +42,14 @@ export function OrderFormModal({ order, products, platforms, details, categoryNa
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { loadCurrencies() }, [loadCurrencies])
+  // If reference data arrives after the panel opened (global host), default the platform.
+  useEffect(() => {
+    if (!platformID && platforms.length) setPlatformID(platforms[0].PlatformID)
+  }, [platforms, platformID])
 
   const productById = useMemo(() => new Map(products.map((p) => [p.ProductID, p])), [products])
   const detailsFor = (productID: string) => details.filter((d) => d.ProductID === productID)
@@ -74,6 +82,37 @@ export function OrderFormModal({ order, products, platforms, details, categoryNa
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  // ── Floating draggable panel (non-modal, so the inventory stays usable) ──
+  const [pos, setPos] = useState(() => ({ x: Math.max(16, window.innerWidth - 660), y: 72 }))
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null)
+  const startDrag = (e: React.MouseEvent) => {
+    dragRef.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }
+    const move = (ev: MouseEvent) => {
+      if (!dragRef.current) return
+      // Allow pushing the panel well past the edges (only keep ~100px reachable so
+      // it can always be grabbed back); the header row stays on-screen vertically.
+      const PANEL_W = 620
+      setPos({
+        x: Math.min(Math.max(-(PANEL_W - 100), ev.clientX - dragRef.current.dx), window.innerWidth - 100),
+        y: Math.min(Math.max(0, ev.clientY - dragRef.current.dy), window.innerHeight - 40)
+      })
+    }
+    const up = () => { dragRef.current = null; window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
+  // Accept products dragged in from the inventory table.
+  const [dropHint, setDropHint] = useState(false)
+  const onPanelDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('text/sims-product')) { e.preventDefault(); setDropHint(true) }
+  }
+  const onPanelDrop = (e: React.DragEvent) => {
+    const pid = e.dataTransfer.getData('text/sims-product')
+    setDropHint(false)
+    if (pid && productById.has(pid)) { e.preventDefault(); addProduct(pid) }
+  }
+
   function addProduct(productID: string): void {
     const ds = detailsFor(productID)
     const firstDetail = ds[0]
@@ -89,6 +128,18 @@ export function OrderFormModal({ order, products, platforms, details, categoryNa
   const patchItem = (key: string, patch: Partial<ItemRow>) =>
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)))
   const removeItem = (key: string) => setItems((prev) => prev.filter((it) => it.key !== key))
+
+  // In a dedicated window, products dragged from the main window arrive via IPC
+  // (HTML5 drag can't cross OS windows); the main process also drives the hover
+  // highlight. A ref keeps the subscription pointed at the latest addProduct.
+  const addProductRef = useRef(addProduct)
+  addProductRef.current = addProduct
+  useEffect(() => {
+    if (!windowMode) return
+    const offAdd = window.api.window.onOrderAddProduct((pid) => addProductRef.current(pid))
+    const offHover = window.api.window.onOrderHover((h) => setDropHint(h))
+    return () => { offAdd(); offHover() }
+  }, [windowMode])
 
   const patchCost = (i: number, patch: Partial<CostRow>) => setCosts((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)))
   const addCost = () => setCosts((prev) => [...prev, { CostName: '', Amount: '', CurrencyCode: currencies[0]?.CurrencyCode ?? 'TWD' }])
@@ -127,10 +178,17 @@ export function OrderFormModal({ order, products, platforms, details, categoryNa
     const extraCosts = costs
       .filter((c) => c.Amount !== '' || c.CostName.trim())
       .map((c) => ({ CostName: c.CostName.trim(), Amount: parseFloat(c.Amount) || 0, CurrencyCode: c.CurrencyCode }))
-    setSaving(true); setError(null)
+    setSaving(true); setError(null); setSuccess(null)
     try {
       await onSubmit({ platformID, date: new Date(date).toISOString(), note: note.trim(), items: built, extraCosts })
-      onClose()
+      if (windowMode) {
+        // Keep the window open for the next entry; just clear the line items.
+        setItems([]); setCosts([]); setNote('')
+        setSuccess('已建立銷售紀錄 ✓')
+        window.setTimeout(() => setSuccess(null), 2500)
+      } else {
+        onClose()
+      }
     } catch (e) {
       setError(String(e).replace(/^Error:\s*/, ''))
     } finally {
@@ -139,14 +197,35 @@ export function OrderFormModal({ order, products, platforms, details, categoryNa
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="card w-[640px] max-h-[92vh] overflow-y-auto p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold flex items-center gap-2"><ShoppingCart size={16} /> {isEdit ? '編輯銷售紀錄' : '新增銷售紀錄'}</h2>
-          <button onClick={onClose} className="btn-ghost p-1"><X size={16} /></button>
+    <div
+      className={
+        windowMode
+          ? `fixed inset-0 flex flex-col bg-white dark:bg-gray-800 ${dropHint ? 'ring-4 ring-inset ring-indigo-400' : ''}`
+          : `fixed z-50 w-[620px] max-h-[88vh] flex flex-col rounded-xl border bg-white dark:bg-gray-800 shadow-2xl
+             ${dropHint ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-gray-200 dark:border-gray-700'}`
+      }
+      style={windowMode ? undefined : { left: pos.x, top: pos.y }}
+      onDragOver={onPanelDragOver}
+      onDragLeave={() => setDropHint(false)}
+      onDrop={onPanelDrop}
+    >
+      {/* Header (drag handle only in the in-app floating variant) */}
+      <div onMouseDown={windowMode ? undefined : startDrag}
+        className={`flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 select-none bg-gray-50 dark:bg-gray-900/40
+          ${windowMode ? '' : 'cursor-move rounded-t-xl'}`}>
+        <h2 className="text-base font-semibold flex items-center gap-2"><ShoppingCart size={16} /> {isEdit ? '編輯銷售紀錄' : '新增銷售紀錄'}</h2>
+        <button onMouseDown={(e) => e.stopPropagation()} onClick={onClose} className="btn-ghost p-1"><X size={16} /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="mb-3 text-xs text-indigo-500 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg px-3 py-1.5">
+          {windowMode
+            ? '這是獨立視窗：可移到程式視窗外、放到第二螢幕，主程式縮小也不會消失。從主視窗的庫存列表把商品拖進來會自動加入。'
+            : '可拖曳此視窗移動；也可從庫存列表直接把商品拖進來自動加入。'}
         </div>
 
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{error}</div>}
+        {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg dark:bg-green-500/10 dark:border-green-500/30 dark:text-green-300">{success}</div>}
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

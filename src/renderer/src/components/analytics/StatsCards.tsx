@@ -63,7 +63,7 @@ export function StatsCards({ totalEarnings, totalCost, totalSales, avgMargin }: 
       />
       <StatCard
         icon={<Percent size={20} />}
-        label="淨利率 (利潤÷成本)"
+        label="淨利率 (利潤/成本)"
         value={`${avgMargin.toFixed(1)}%`}
         accent={avgMargin >= 0 ? 'green' : 'orange'}
       />

@@ -7,6 +7,7 @@ import { useCategories } from '../hooks/useCategories'
 import { useProducts } from '../hooks/useProducts'
 import { useDetails } from '../hooks/useDetails'
 import { useSalesFilterStore } from '../stores/useSalesFilterStore'
+import { useDataVersion } from '../stores/useDataVersion'
 import { Thumbnail } from '../components/inventory/Thumbnail'
 import { OrderFormModal } from '../components/inventory/OrderFormModal'
 
@@ -22,6 +23,7 @@ export function SalesRecordsView() {
   const { products, load: loadProducts } = useProducts()
   const { details, load: loadDetails } = useDetails()
   const f = useSalesFilterStore()
+  const dataVersion = useDataVersion((s) => s.version)
 
   const [modal, setModal] = useState<{ open: boolean; target?: OrderWithCalc | null; prefill?: string | null }>({ open: false })
 
@@ -29,6 +31,8 @@ export function SalesRecordsView() {
 
   useEffect(() => { loadPlatforms(); loadCategories(); loadProducts(); loadDetails() }, [loadPlatforms, loadCategories, loadProducts, loadDetails])
   useEffect(() => { reload() }, [f.timePreset, f.platformID, f.productID, f.categoryID, load])
+  // Reload when a sale is recorded from the global order panel.
+  useEffect(() => { if (dataVersion) reload() }, [dataVersion])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (input: CreateOrderInput) => {
     if (modal.target) await update(modal.target.OrderID, input)
@@ -64,7 +68,7 @@ export function SalesRecordsView() {
             商品 {f.productID} <X size={11} />
           </button>
         )}
-        <button onClick={() => setModal({ open: true, target: null })} className="btn-primary ml-auto"><Plus size={15} /> 新增銷售紀錄</button>
+        <button onClick={() => window.api.window.openOrder()} className="btn-primary ml-auto"><Plus size={15} /> 新增銷售紀錄</button>
         <span className="text-xs text-gray-400">{orders.length} 筆訂單</span>
       </div>
 
